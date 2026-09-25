@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Telehealth",
+    "slug": "telehealth",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store",
+      "expo-splash-screen",
+      "@livekit/react-native-expo-plugin",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Telehealth përdor kamerën për videothirrjet me mjekun.",
+          "microphonePermission": "Telehealth përdor mikrofonin për thirrjet me mjekun."
+        }
+      ]
+    ],
+    "scheme": "telehealth",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

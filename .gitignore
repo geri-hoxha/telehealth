@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.turbo/
+.env
+*.log
+
+# Expo
+.expo/
+web-build/
+expo-env.d.ts
+ios/
+android/
+
+# Prisma generated client
+apps/api/src/generated/
+*.tsbuildinfo

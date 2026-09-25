@@ -1,0 +1,14 @@
+packages:
+  - apps/*
+
+allowBuilds:
+  '@prisma/engines': true
+  '@scarf/scarf': false
+  esbuild: true
+  prisma: true
+nodeLinker: hoisted
+
+# One React version across the workspace: the one Expo SDK 57 expects (Expo and Prisma Studio pull in react/react-dom as peers).
+overrides:
+  react-dom: 19.2.3
+  react: 19.2.3
