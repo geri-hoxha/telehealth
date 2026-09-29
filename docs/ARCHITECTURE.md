@@ -192,7 +192,7 @@ WebSocket `/realtime`: `call.incoming`, `call.state_changed`, `call.cancelled`, 
 
 ## 14. Open questions
 
-- **L1:** Can call media go through ACS in Europe? If yes, can the rest of the system run on Azure (Italy North)? If no, we self-host a media server in Albania.
+- **L1:** Can call media go through ACS in Europe? If yes, can the rest of the system run on Azure (Italy North)? If no, we self-host a media server in Albania. answer: we will use ACS, the app for now will be just a demo on my local iphone. 
 - **L2:** What the data-protection, telemedicine, medical-record and AMF rules actually require.
 - **D2:** The 24/7 model: fallback pool size, shifts, answer-time target.
 - **P1:** Which coverage types unlock telemedicine, and their COUNT limits.
