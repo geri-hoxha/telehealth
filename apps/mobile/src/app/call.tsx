@@ -1,48 +1,40 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import {
-  AudioSession,
-  LiveKitRoom,
-  useConnectionState,
-  useTracks,
-  VideoTrack,
-} from '@livekit/react-native';
-import { useQuery } from '@tanstack/react-query';
-import { router } from 'expo-router';
+import { AcsVideoView, type CallMedia } from '@modules/acs-calling';
+import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ConnectionState, Track } from 'livekit-client';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentProps } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { callsApi } from '@/api/calls';
-import { useAuth } from '@/auth/AuthProvider';
+import { useCall, type CallPhase, type CallRequest } from '@/calls/useCall';
 import { colors, radius, spacing } from '@/theme';
 
 const BACKGROUND = '#0B1220';
 const HANG_UP_RED = '#E5241B';
+const CONTROL_BACKGROUND = 'rgba(255, 255, 255, 0.16)';
 
+type Params = { media?: string; callId?: string; answer?: string };
+
+/**
+ * The call screen. Opened with `media` to call a doctor (patient), or with `callId` + `answer=1`
+ * to answer a ringing call (doctor).
+ */
 export default function CallScreen() {
-  const { token } = useAuth();
-  const [endMessage, setEndMessage] = useState<string | null>(null);
+  const params = useLocalSearchParams<Params>();
+  const media: CallMedia = params.media === 'VIDEO' ? 'VIDEO' : 'AUDIO';
+  const request: CallRequest =
+    params.answer && params.callId
+      ? { kind: 'answer', callId: params.callId, media }
+      : { kind: 'outgoing', media };
 
-  const callToken = useQuery({
-    queryKey: ['call-token'],
-    queryFn: () => callsApi.createToken(token!),
-    enabled: !!token,
-    gcTime: 0,
-    retry: false,
-  });
+  const call = useCall(request);
+  const insets = useSafeAreaInsets();
+  const isVideo = call.media === 'VIDEO';
 
-  useEffect(() => {
-    void AudioSession.startAudioSession();
-    return () => {
-      void AudioSession.stopAudioSession();
-    };
-  }, []);
-
-  let content;
-  if (callToken.isError || endMessage) {
-    content = (
-      <CallMessage text={endMessage ?? 'Nuk mund të fillojmë thirrjen. Provoni përsëri.'}>
+  if (call.phase === 'ended') {
+    return (
+      <View style={[styles.screen, styles.centered]}>
+        <StatusBar style="light" />
+        <Text style={styles.endText}>{call.endMessage}</Text>
         <Pressable
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
@@ -50,69 +42,56 @@ export default function CallScreen() {
         >
           <Text style={styles.backButtonText}>Kthehu</Text>
         </Pressable>
-      </CallMessage>
-    );
-  } else if (!callToken.data) {
-    content = <CallMessage text="Duke u lidhur..." loading />;
-  } else {
-    content = (
-      <LiveKitRoom
-        serverUrl={callToken.data.serverUrl}
-        token={callToken.data.token}
-        connect
-        audio
-        video
-        onError={() => setEndMessage((current) => current ?? 'Thirrja nuk u lidh. Provoni përsëri.')}
-        onDisconnected={() => setEndMessage((current) => current ?? 'Thirrja përfundoi.')}
-      >
-        <RoomView />
-      </LiveKitRoom>
+      </View>
     );
   }
 
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
-      {content}
-    </View>
-  );
-}
 
-function RoomView() {
-  const insets = useSafeAreaInsets();
-  const connectionState = useConnectionState();
-  const cameraTracks = useTracks([Track.Source.Camera]);
-  const localTrack = cameraTracks.find((track) => track.participant.isLocal);
-  const remoteTrack = cameraTracks.find((track) => !track.participant.isLocal);
-
-  return (
-    <View style={styles.screen}>
-      {remoteTrack ? (
-        <VideoTrack trackRef={remoteTrack} style={StyleSheet.absoluteFill} objectFit="cover" zOrder={0} />
+      {call.remoteVideo ? (
+        <AcsVideoView source="remote" style={StyleSheet.absoluteFill} />
       ) : (
-        <CallMessage
-          text={
-            connectionState === ConnectionState.Connected
-              ? 'Në pritje të pjesëmarrësit tjetër...'
-              : 'Duke u lidhur...'
-          }
-          loading
-        />
+        <View style={[StyleSheet.absoluteFill, styles.centered]}>
+          <View style={styles.avatar}>
+            <Ionicons name={isVideo ? 'videocam' : 'person'} size={48} color={colors.white} />
+          </View>
+          <Text style={styles.name}>{call.otherParty ?? 'Mjeku'}</Text>
+          <StatusLine phase={call.phase} connectedAt={call.connectedAt} />
+        </View>
       )}
 
-      {localTrack ? (
-        <VideoTrack
-          trackRef={localTrack}
-          style={{ ...styles.selfView, top: insets.top + spacing.md }}
-          objectFit="cover"
-          mirror
-          zOrder={1}
-        />
+      {call.localVideo ? (
+        <AcsVideoView source="local" style={[styles.selfView, { top: insets.top + spacing.md }]} />
       ) : null}
 
       <View style={[styles.controls, { paddingBottom: insets.bottom + spacing.lg }]}>
+        <ControlButton
+          icon={call.muted ? 'mic-off' : 'mic'}
+          label={call.muted ? 'Aktivizo mikrofonin' : 'Çaktivizo mikrofonin'}
+          active={call.muted}
+          onPress={call.controls.toggleMute}
+        />
+        {isVideo ? (
+          <ControlButton
+            icon={call.localVideo ? 'videocam' : 'videocam-off'}
+            label={call.localVideo ? 'Fik kamerën' : 'Ndiz kamerën'}
+            active={!call.localVideo}
+            onPress={call.controls.toggleCamera}
+          />
+        ) : null}
+        {call.localVideo ? (
+          <ControlButton icon="camera-reverse" label="Ndërro kamerën" onPress={call.controls.switchCamera} />
+        ) : null}
+        <ControlButton
+          icon={call.speakerOn ? 'volume-high' : 'volume-medium'}
+          label={call.speakerOn ? 'Fik altoparlantin' : 'Ndiz altoparlantin'}
+          active={call.speakerOn}
+          onPress={call.controls.toggleSpeaker}
+        />
         <Pressable
-          onPress={() => router.back()}
+          onPress={call.controls.hangUp}
           style={({ pressed }) => [styles.hangUp, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Mbyll thirrjen"
@@ -124,21 +103,49 @@ function RoomView() {
   );
 }
 
-function CallMessage({
-  text,
-  loading = false,
-  children,
+function StatusLine({ phase, connectedAt }: { phase: CallPhase; connectedAt: number | null }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!connectedAt) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [connectedAt]);
+
+  if (phase === 'inCall' && connectedAt) {
+    const seconds = Math.max(0, Math.floor((now - connectedAt) / 1000));
+    const minutes = Math.floor(seconds / 60);
+    return <Text style={styles.status}>{`${minutes}:${String(seconds % 60).padStart(2, '0')}`}</Text>;
+  }
+
+  const text = phase === 'ringing' ? 'Duke thirrur...' : 'Duke u lidhur...';
+  return (
+    <View style={styles.statusRow}>
+      <ActivityIndicator color={colors.white} />
+      <Text style={styles.status}>{text}</Text>
+    </View>
+  );
+}
+
+function ControlButton({
+  icon,
+  label,
+  active = false,
+  onPress,
 }: {
-  text: string;
-  loading?: boolean;
-  children?: ReactNode;
+  icon: ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  active?: boolean;
+  onPress: () => void;
 }) {
   return (
-    <View style={styles.message}>
-      {loading ? <ActivityIndicator color={colors.white} /> : null}
-      <Text style={styles.messageText}>{text}</Text>
-      {children}
-    </View>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.control, active && styles.controlActive, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Ionicons name={icon} size={26} color={active ? BACKGROUND : colors.white} />
+    </Pressable>
   );
 }
 
@@ -149,15 +156,39 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: BACKGROUND,
   },
-  message: {
-    flex: 1,
+  centered: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.md,
     padding: spacing.lg,
   },
-  messageText: {
+  avatar: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CONTROL_BACKGROUND,
+  },
+  name: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.white,
+    textAlign: 'center',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  status: {
     fontSize: 16,
+    color: colors.white,
+    opacity: 0.85,
+  },
+  endText: {
+    fontSize: 17,
+    lineHeight: 24,
     color: colors.white,
     textAlign: 'center',
   },
@@ -185,7 +216,23 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  control: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CONTROL_BACKGROUND,
+  },
+  controlActive: {
+    backgroundColor: colors.white,
   },
   hangUp: {
     width: 72,

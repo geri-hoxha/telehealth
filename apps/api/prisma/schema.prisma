@@ -8,6 +8,11 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Role {
+  PATIENT
+  DOCTOR
+}
+
 model User {
   id           String   @id @default(uuid(7)) @db.Uuid
   username     String   @unique
@@ -15,8 +20,84 @@ model User {
   passwordHash String
   firstName    String
   lastName     String
+  role         Role     @default(PATIENT)
+  /// The user's Azure Communication Services identity, created the first time they join a call.
+  acsUserId    String?  @unique
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  devices       Device[]
+  patientCalls  Call[]   @relation("PatientCalls")
+  doctorCalls   Call[]   @relation("DoctorCalls")
+
   @@map("users")
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+}
+
+/// VOIP: an APNs PushKit token (iOS). FCM: a Firebase Cloud Messaging token (Android).
+enum PushKind {
+  VOIP
+  FCM
+}
+
+/// A phone that can ring for incoming calls.
+model Device {
+  id        String         @id @default(uuid(7)) @db.Uuid
+  userId    String         @db.Uuid
+  platform  DevicePlatform
+  kind      PushKind
+  token     String         @unique
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("devices")
+}
+
+enum CallMedia {
+  AUDIO
+  VIDEO
+}
+
+/// RINGING → ACCEPTED → ENDED
+/// RINGING → DECLINED | CANCELED | UNANSWERED
+/// any     → FAILED
+enum CallState {
+  RINGING
+  ACCEPTED
+  ENDED
+  DECLINED
+  CANCELED
+  UNANSWERED
+  FAILED
+}
+
+model Call {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  patientId  String    @db.Uuid
+  doctorId   String    @db.Uuid
+  media      CallMedia
+  state      CallState @default(RINGING)
+  /// The ACS Room the call's media runs in. The patient is added when the call is created,
+  /// the doctor only when they accept.
+  acsRoomId  String    @unique
+  createdAt  DateTime  @default(now())
+  answeredAt DateTime?
+  endedAt    DateTime?
+  updatedAt  DateTime  @updatedAt
+
+  patient User @relation("PatientCalls", fields: [patientId], references: [id])
+  doctor  User @relation("DoctorCalls", fields: [doctorId], references: [id])
+
+  // The migration also adds partial unique indexes: one active (RINGING/ACCEPTED) call
+  // per patient and one per doctor.
+  @@index([patientId, createdAt])
+  @@index([doctorId, createdAt])
+  @@map("calls")
 }

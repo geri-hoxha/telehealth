@@ -20,15 +20,18 @@ export const API_URL = resolveApiUrl();
 export class ApiError extends Error {
   /** HTTP status code, or 0 when the server could not be reached. */
   readonly status: number;
+  /** Stable error code from the API, e.g. NO_DOCTOR_AVAILABLE. */
+  readonly code?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'DELETE';
   body?: unknown;
   token?: string | null;
 }
@@ -57,11 +60,13 @@ export async function apiRequest<T>(
     clearTimeout(timeout);
   }
 
+  // 204 responses have no body.
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const message =
       data && typeof data === 'object' && 'message' in data ? String(data.message) : response.statusText;
-    throw new ApiError(response.status, message);
+    const code = data && typeof data === 'object' && 'code' in data ? String(data.code) : undefined;
+    throw new ApiError(response.status, message, code);
   }
   return data as T;
 }

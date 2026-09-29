@@ -7,23 +7,23 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env['DATABASE_URL'] }),
 });
 
-// Demo login for the prototype.
-const DEMO_USERNAME = 'geri';
+// Demo logins for the prototype: a patient who calls, and a doctor whose phone rings.
 const DEMO_PASSWORD = '1234';
+const DEMO_USERS = [
+  { username: 'geri', email: 'geri@telehealth.al', firstName: 'Geri', lastName: 'Demo', role: 'PATIENT' },
+  { username: 'doktor', email: 'doktor@telehealth.al', firstName: 'Arben', lastName: 'Mjeku', role: 'DOCTOR' },
+] as const;
 
 async function main() {
-  await prisma.user.upsert({
-    where: { username: DEMO_USERNAME },
-    update: {},
-    create: {
-      username: DEMO_USERNAME,
-      email: 'geri@telehealth.al',
-      passwordHash: await hash(DEMO_PASSWORD),
-      firstName: 'Geri',
-      lastName: 'Demo',
-    },
-  });
-  console.log(`Seeded demo user: ${DEMO_USERNAME} / ${DEMO_PASSWORD}`);
+  const passwordHash = await hash(DEMO_PASSWORD);
+  for (const user of DEMO_USERS) {
+    await prisma.user.upsert({
+      where: { username: user.username },
+      update: { role: user.role },
+      create: { ...user, passwordHash },
+    });
+    console.log(`Seeded ${user.role.toLowerCase()}: ${user.username} / ${DEMO_PASSWORD}`);
+  }
 }
 
 main()

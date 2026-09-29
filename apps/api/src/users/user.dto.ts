@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { User } from '../generated/prisma/client';
+import { Role } from '../generated/prisma/enums';
 
 export class UserDto {
   @ApiProperty({ format: 'uuid' })
@@ -17,6 +18,9 @@ export class UserDto {
   @ApiProperty({ example: 'Demo' })
   lastName: string;
 
+  @ApiProperty({ enum: Role, description: 'PATIENT calls doctors; DOCTOR receives calls' })
+  role: Role;
+
   @ApiProperty()
   createdAt: Date;
 }
@@ -29,6 +33,7 @@ export function toUserDto(user: User): UserDto {
     email: user.email,
     firstName: user.firstName,
     lastName: user.lastName,
+    role: user.role,
     createdAt: user.createdAt,
   };
 }

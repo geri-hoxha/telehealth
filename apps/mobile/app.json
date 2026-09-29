@@ -7,7 +7,19 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "al.telehealth.app",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio",
+          "voip"
+        ],
+        "NSCameraUsageDescription": "Telehealth përdor kamerën për videothirrjet me mjekun.",
+        "NSMicrophoneUsageDescription": "Telehealth përdor mikrofonin për thirrjet me mjekun."
+      },
+      "entitlements": {
+        "aps-environment": "development"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -16,19 +28,24 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "al.telehealth.app"
     },
     "plugins": [
       "expo-router",
       "expo-status-bar",
       "expo-secure-store",
       "expo-splash-screen",
-      "@livekit/react-native-expo-plugin",
       [
-        "@config-plugins/react-native-webrtc",
+        "expo-build-properties",
         {
-          "cameraPermission": "Telehealth përdor kamerën për videothirrjet me mjekun.",
-          "microphonePermission": "Telehealth përdor mikrofonin për thirrjet me mjekun."
+          "android": {
+            "packagingOptions": {
+              "pickFirst": [
+                "META-INF/*"
+              ]
+            }
+          }
         }
       ]
     ],

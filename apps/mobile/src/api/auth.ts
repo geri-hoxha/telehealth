@@ -6,6 +6,8 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
+  /** Patients call doctors; doctors receive the calls. */
+  role: 'PATIENT' | 'DOCTOR';
   createdAt: string;
 }
 

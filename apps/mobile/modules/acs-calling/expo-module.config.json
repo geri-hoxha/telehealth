@@ -1,0 +1,10 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["AcsCallingModule"],
+    "appDelegateSubscribers": ["AcsCallingAppDelegate"]
+  },
+  "android": {
+    "modules": ["expo.modules.acscalling.AcsCallingModule"]
+  }
+}
