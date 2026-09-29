@@ -1,30 +1,71 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import type { CallMedia } from '@modules/acs-calling';
 import { router } from 'expo-router';
+import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '@/auth/AuthProvider';
 import { colors, radius, spacing } from '@/theme';
 
 export default function DoctorScreen() {
+  const { user } = useAuth();
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Text style={styles.title}>Mjeku</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Thirrje testuese</Text>
-        <Text style={styles.cardText}>
-          Hyni në dhomën e testit me video dhe audio. Kushdo tjetër që hyn në të njëjtën dhomë do të
-          lidhet me ju.
-        </Text>
-        <Pressable
-          onPress={() => router.push('/call')}
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-          accessibilityRole="button"
-        >
-          <Ionicons name="videocam" size={20} color={colors.white} />
-          <Text style={styles.buttonText}>Fillo thirrjen</Text>
-        </Pressable>
-      </View>
+      {user?.role === 'DOCTOR' ? <DoctorCard /> : <PatientCard />}
     </SafeAreaView>
+  );
+}
+
+function PatientCard() {
+  const call = (media: CallMedia) => router.push({ pathname: '/call', params: { media } });
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>Flisni me mjekun</Text>
+      <Text style={styles.cardText}>
+        Telefononi mjekun nga aplikacioni, me zë ose me video. Do t'ju lidhim me mjekun e parë që është i lirë.
+      </Text>
+      <CallButton icon="call" label="Thirrje zanore" onPress={() => call('AUDIO')} />
+      <CallButton icon="videocam" label="Videothirrje" onPress={() => call('VIDEO')} />
+    </View>
+  );
+}
+
+function DoctorCard() {
+  return (
+    <View style={styles.card}>
+      <View style={styles.statusRow}>
+        <Ionicons name="radio-button-on" size={18} color={colors.primary} />
+        <Text style={styles.cardTitle}>Në dispozicion për thirrje</Text>
+      </View>
+      <Text style={styles.cardText}>
+        Kur një pacient ju telefonon, ky telefon do të bjerë, edhe kur aplikacioni është i mbyllur ose ekrani
+        është i kyçur.
+      </Text>
+    </View>
+  );
+}
+
+function CallButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+      accessibilityRole="button"
+    >
+      <Ionicons name={icon} size={20} color={colors.white} />
+      <Text style={styles.buttonText}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -47,6 +88,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   cardTitle: {
     fontSize: 17,
