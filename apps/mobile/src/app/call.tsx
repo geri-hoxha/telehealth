@@ -1,10 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { AcsVideoView, type CallMedia } from '@modules/acs-calling';
+import { RoomContext, useLocalParticipant, useTracks, VideoTrack } from '@livekit/react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { Track } from 'livekit-client';
 import { useEffect, useState, type ComponentProps } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { CallMedia } from '@/api/calls';
 import { useCall, type CallPhase, type CallRequest } from '@/calls/useCall';
 import { colors, radius, spacing } from '@/theme';
 
@@ -12,23 +14,23 @@ const BACKGROUND = '#0B1220';
 const HANG_UP_RED = '#E5241B';
 const CONTROL_BACKGROUND = 'rgba(255, 255, 255, 0.16)';
 
-type Params = { media?: string; callId?: string; answer?: string };
+type Params = { media?: string; callId?: string; sessionId?: string; requestId?: string };
+
+type ActiveCall = ReturnType<typeof useCall>;
 
 /**
- * The call screen. Opened with `media` to call a doctor (patient), or with `callId` + `answer=1`
- * to answer a ringing call (doctor).
+ * The call screen. Opened with `media` to call a doctor (patient), or with `callId`, `sessionId`
+ * and `requestId` after the doctor answered on the phone's call screen.
  */
 export default function CallScreen() {
   const params = useLocalSearchParams<Params>();
   const media: CallMedia = params.media === 'VIDEO' ? 'VIDEO' : 'AUDIO';
   const request: CallRequest =
-    params.answer && params.callId
-      ? { kind: 'answer', callId: params.callId, media }
+    params.callId && params.sessionId && params.requestId
+      ? { kind: 'answer', callId: params.callId, media, sessionId: params.sessionId, requestId: params.requestId }
       : { kind: 'outgoing', media };
 
   const call = useCall(request);
-  const insets = useSafeAreaInsets();
-  const isVideo = call.media === 'VIDEO';
 
   if (call.phase === 'ended') {
     return (
@@ -47,11 +49,27 @@ export default function CallScreen() {
   }
 
   return (
+    <RoomContext.Provider value={call.room}>
+      <CallView call={call} />
+    </RoomContext.Provider>
+  );
+}
+
+/** The call in progress: the other side's video (or name), this phone's camera and the controls. */
+function CallView({ call }: { call: ActiveCall }) {
+  const insets = useSafeAreaInsets();
+  const isVideo = call.media === 'VIDEO';
+  const { isCameraEnabled } = useLocalParticipant();
+  const cameraTracks = useTracks([Track.Source.Camera]);
+  const localTrack = cameraTracks.find((track) => track.participant.isLocal);
+  const remoteTrack = cameraTracks.find((track) => !track.participant.isLocal && !track.publication.isMuted);
+
+  return (
     <View style={styles.screen}>
       <StatusBar style="light" />
 
-      {call.remoteVideo ? (
-        <AcsVideoView source="remote" style={StyleSheet.absoluteFill} />
+      {remoteTrack ? (
+        <VideoTrack trackRef={remoteTrack} style={StyleSheet.absoluteFill} objectFit="cover" zOrder={0} />
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.centered]}>
           <View style={styles.avatar}>
@@ -62,8 +80,14 @@ export default function CallScreen() {
         </View>
       )}
 
-      {call.localVideo ? (
-        <AcsVideoView source="local" style={[styles.selfView, { top: insets.top + spacing.md }]} />
+      {localTrack && isCameraEnabled ? (
+        <VideoTrack
+          trackRef={localTrack}
+          style={{ ...styles.selfView, top: insets.top + spacing.md }}
+          objectFit="cover"
+          mirror={call.frontCamera}
+          zOrder={1}
+        />
       ) : null}
 
       <View style={[styles.controls, { paddingBottom: insets.bottom + spacing.lg }]}>
@@ -75,13 +99,13 @@ export default function CallScreen() {
         />
         {isVideo ? (
           <ControlButton
-            icon={call.localVideo ? 'videocam' : 'videocam-off'}
-            label={call.localVideo ? 'Fik kamerën' : 'Ndiz kamerën'}
-            active={!call.localVideo}
+            icon={isCameraEnabled ? 'videocam' : 'videocam-off'}
+            label={isCameraEnabled ? 'Fik kamerën' : 'Ndiz kamerën'}
+            active={!isCameraEnabled}
             onPress={call.controls.toggleCamera}
           />
         ) : null}
-        {call.localVideo ? (
+        {isCameraEnabled ? (
           <ControlButton icon="camera-reverse" label="Ndërro kamerën" onPress={call.controls.switchCamera} />
         ) : null}
         <ControlButton

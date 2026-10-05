@@ -6,14 +6,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AcsService } from '../acs/acs.service';
 import { Prisma, type Call, type CallMedia, type CallState, type User } from '../generated/prisma/client';
+import { LiveKitService } from '../livekit/livekit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 import { CallDto, CallJoinDto, CallWithJoinDto } from './call.dto';
 
 const ACTIVE_STATES: CallState[] = ['RINGING', 'ACCEPTED'];
-/** An accepted call that is still open after this long is treated as over (the room has expired). */
+/** An accepted call that is still open after this long is treated as over (a phone left without hanging up). */
 const MAX_CALL_MS = 3 * 60 * 60 * 1000;
 
 type CallWithParties = Call & { patient: User; doctor: User };
@@ -26,7 +26,7 @@ export class CallsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly acs: AcsService,
+    private readonly livekit: LiveKitService,
     private readonly push: PushService,
     config: ConfigService,
   ) {
@@ -48,18 +48,15 @@ export class CallsService {
     if (!doctor) {
       throw new ConflictException({ code: 'NO_DOCTOR_AVAILABLE', message: 'No doctor is available right now' });
     }
-
-    const acsUserId = await this.ensureAcsIdentity(patient);
-    const roomId = await this.acs.createRoom(acsUserId);
+    this.livekit.requireConfigured();
 
     let call: CallWithParties;
     try {
       call = await this.prisma.call.create({
-        data: { patientId, doctorId: doctor.id, media, acsRoomId: roomId },
+        data: { patientId, doctorId: doctor.id, media },
         include: withParties,
       });
     } catch (error) {
-      await this.acs.deleteRoom(roomId);
       // Lost a race with another call for the same patient or doctor (partial unique indexes).
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException({ code: 'CALL_ALREADY_ACTIVE', message: 'The patient or doctor is already in a call' });
@@ -67,9 +64,21 @@ export class CallsService {
       throw error;
     }
 
-    void this.push.sendIncomingCall(doctor.id, { callId: call.id, media }, this.ringSeconds);
+    let join: CallJoinDto;
+    try {
+      join = await this.joinInfo(call.id, patient);
+    } catch (error) {
+      await this.finish(call, ['RINGING'], 'FAILED');
+      throw error;
+    }
 
-    return { call: toCallDto(call), join: await this.joinInfo(roomId, acsUserId) };
+    void this.push.sendIncomingCall(
+      doctor.id,
+      { callId: call.id, callerId: patient.id, media },
+      this.ringSeconds,
+    );
+
+    return { call: toCallDto(call), join };
   }
 
   async get(userId: string, callId: string): Promise<CallDto> {
@@ -87,31 +96,31 @@ export class CallsService {
     return call ? toCallDto(call) : null;
   }
 
-  /** The doctor answers: they are added to the room and get a token to join it. */
+  /** The doctor answers and gets a token for the room the patient is waiting in. */
   async accept(doctorId: string, callId: string): Promise<CallWithJoinDto> {
     await this.expireStaleCalls();
     const call = await this.requireParticipant(doctorId, callId, 'doctor');
     await this.transition(call, ['RINGING'], 'ACCEPTED', { answeredAt: new Date() });
 
     try {
-      const acsUserId = await this.ensureAcsIdentity(call.doctor);
-      await this.acs.addToRoom(call.acsRoomId, acsUserId);
-      const join = await this.joinInfo(call.acsRoomId, acsUserId);
+      const join = await this.joinInfo(call.id, call.doctor);
       return { call: toCallDto(await this.reload(callId)), join };
     } catch (error) {
-      this.logger.error(`Could not add the doctor to call ${callId}: ${String(error)}`);
+      this.logger.error(`Could not create the doctor's token for call ${callId}: ${String(error)}`);
       await this.finish(call, ['ACCEPTED'], 'FAILED');
       throw error;
     }
   }
 
   async decline(doctorId: string, callId: string): Promise<CallDto> {
+    await this.expireStaleCalls();
     const call = await this.requireParticipant(doctorId, callId, 'doctor');
     await this.finish(call, ['RINGING'], 'DECLINED', { strict: true });
     return toCallDto(await this.reload(callId));
   }
 
   async cancel(patientId: string, callId: string): Promise<CallDto> {
+    await this.expireStaleCalls();
     const call = await this.requireParticipant(patientId, callId, 'patient');
     await this.finish(call, ['RINGING'], 'CANCELED', { strict: true });
     return toCallDto(await this.reload(callId));
@@ -122,6 +131,7 @@ export class CallsService {
    * declines it (doctor). Calling it on a call that is already over does nothing.
    */
   async end(userId: string, callId: string): Promise<CallDto> {
+    await this.expireStaleCalls();
     const call = await this.requireParticipant(userId, callId);
     if (call.state === 'RINGING') {
       await this.finish(call, ['RINGING'], call.patientId === userId ? 'CANCELED' : 'DECLINED');
@@ -154,7 +164,10 @@ export class CallsService {
     }
   }
 
-  /** Ends a call: records the final state, stops the doctor's phone ringing and closes the ACS room. */
+  /**
+   * Ends a call: records the final state and closes the LiveKit room, which disconnects both phones.
+   * A doctor's phone that is still ringing notices the new state itself (or stops at its ring timeout).
+   */
   private async finish(
     call: Call,
     from: CallState[],
@@ -167,10 +180,7 @@ export class CallsService {
       if (strict) throw error;
       return; // Someone else already ended it.
     }
-    if (call.state === 'RINGING' && to !== 'DECLINED') {
-      void this.push.sendCallCancelled(call.doctorId, call.id);
-    }
-    void this.acs.deleteRoom(call.acsRoomId);
+    void this.livekit.deleteRoom(roomName(call.id));
   }
 
   /** Marks calls nobody answered in time, and calls left open for too long, as over. */
@@ -189,11 +199,20 @@ export class CallsService {
     }
   }
 
-  /** A doctor with no ringing or ongoing call, preferring doctors with a phone that can ring. */
+  /**
+   * A doctor with no ringing or ongoing call, preferring doctors with a phone that can ring.
+   * A call the patient cancelled can keep ringing on a closed app until the phone's own ring
+   * timeout, and the phone drops a new ring meanwhile, so that doctor isn't free yet either.
+   */
   private async findFreeDoctor(): Promise<User | null> {
+    const mayStillRing = new Date(Date.now() - this.ringSeconds * 1000);
     const free: Prisma.UserWhereInput = {
       role: 'DOCTOR',
-      doctorCalls: { none: { state: { in: ACTIVE_STATES } } },
+      doctorCalls: {
+        none: {
+          OR: [{ state: { in: ACTIVE_STATES } }, { state: 'CANCELED', createdAt: { gt: mayStillRing } }],
+        },
+      },
     };
     return (
       (await this.prisma.user.findFirst({ where: { ...free, devices: { some: {} } }, orderBy: { createdAt: 'asc' } })) ??
@@ -201,18 +220,12 @@ export class CallsService {
     );
   }
 
-  private async ensureAcsIdentity(user: User): Promise<string> {
-    if (user.acsUserId) {
-      return user.acsUserId;
-    }
-    const acsUserId = await this.acs.createIdentity();
-    await this.prisma.user.update({ where: { id: user.id }, data: { acsUserId } });
-    return acsUserId;
-  }
-
-  private async joinInfo(roomId: string, acsUserId: string): Promise<CallJoinDto> {
-    const { token, expiresOn } = await this.acs.issueToken(acsUserId);
-    return { roomId, acsUserId, token, expiresOn };
+  /**
+   * A token for this call's room only, so the doctor can't join before accepting. Only the user's
+   * id goes to LiveKit; the apps take names from the API.
+   */
+  private joinInfo(callId: string, user: User): Promise<CallJoinDto> {
+    return this.livekit.createJoin(roomName(callId), user.id);
   }
 
   private async requireUser(userId: string): Promise<User> {
@@ -259,4 +272,9 @@ function toCallDto(call: CallWithParties): CallDto {
 
 function fullName(user: User): string {
   return `${user.firstName} ${user.lastName}`;
+}
+
+/** Each call gets its own LiveKit room. LiveKit creates it when the patient joins. */
+function roomName(callId: string): string {
+  return `call-${callId}`;
 }

@@ -1,6 +1,6 @@
 # Telehealth: Target Architecture
 
-> The long-term plan. The current code is only a demo prototype (login and home screen). Build towards this in phases.
+> The long-term plan. The current code is only a demo prototype (login, home screen and patient → doctor calls). Build towards this in phases.
 
 ## 1. Product and decisions
 
@@ -13,7 +13,7 @@ Insured clients call their **personal doctor 24/7** by audio or video. What each
 | What decides access | The **policy's coverages** (there are no separate tiers) |
 | Policy data | **Entered in our admin web**, which is the master copy |
 | How calls use coverage | Only **the number of calls is counted**; money limits are shown, not deducted |
-| Calls | **Azure Communication Services (ACS)**, using Rooms for media |
+| Calls | **LiveKit** (open source), one room per call: LiveKit Cloud (EU) for now, self-hosted in Albania if media must stay in the country |
 | Doctors | Use their **phones only**; one app for both patients and doctors |
 | Insurers | One (the `Insurer` table exists so more can be added) |
 | 24/7 model | Not decided yet, so routing is configurable |
@@ -27,22 +27,22 @@ Insured clients call their **personal doctor 24/7** by audio or video. What each
 ```
 Expo app (patient + doctor) ──REST──► NestJS modular monolith ──► PostgreSQL (Prisma)
         ▲   ◄──Socket.IO events──        │  BullMQ jobs          Redis (presence, queues, WS adapter)
-        │                                  ├─► ACS: identities, tokens, Rooms ◄── Event Grid webhooks
+        │                                  ├─► LiveKit: room tokens, room API ◄── LiveKit webhooks
         │ VoIP push (APNs) / FCM ◄────────┘
-        └──── media ────► Azure Communication Services
+        └──── media ────► LiveKit (Cloud EU, or self-hosted in Albania)
 Admin web (Vite + React) ──REST──► same API (/admin/*)
 ```
 
 - **Control plane:** our API decides everything: call state, routing and eligibility.
-- **Media:** ACS Rooms. Apps join with ACS tokens that our backend issues.
-- **Wake-up:** APNs VoIP pushes (iOS) and high-priority FCM data messages (Android) bring up the phone's native call screen through CallKeep. Payloads contain only IDs.
+- **Media:** one LiveKit room per call. Apps join with LiveKit tokens that our backend issues. The app works the same with LiveKit Cloud and a self-hosted LiveKit server; only the API's settings change.
+- **Wake-up:** APNs VoIP pushes (iOS) and high-priority FCM data messages (Android) bring up the phone's native call screen through `expo-callkit-telecom` (CallKit / Core-Telecom). Payloads contain only IDs.
 - **No microservices, no Kubernetes.** BullMQ workers run in the API process until load requires splitting them out.
 
 ## 3. Target monorepo
 
 ```
 apps/
-  mobile/     Expo + expo-router · (auth) (patient) (doctor) route groups · modules/acs-calling (Swift/Kotlin bridge)
+  mobile/     Expo + expo-router · (auth) (patient) (doctor) route groups · LiveKit + expo-callkit-telecom
   api/        NestJS · src/{common,config,infra,modules} · prisma/
   admin/      Vite + React + TanStack Router/Query/Table + RHF + Zod + Mantine
 packages/
@@ -67,7 +67,7 @@ Rules:
 | eligibility | Pure rules engine plus a call-usage ledger |
 | doctors | Profiles, licence checks, care teams, personal-doctor assignments |
 | availability | Status the doctor sets, shifts, Redis presence, "effectively available" |
-| calls | State machine, configurable routing, ACS adapter, Event Grid webhook, timeouts and sweeper jobs, callbacks |
+| calls | State machine, configurable routing, LiveKit adapter, LiveKit webhooks, timeouts and sweeper jobs, callbacks |
 | consultations | Notes per call (draft, then signed) |
 | notifications | FCM, APNs VoIP and SMS adapters, templates in Albanian and English |
 | realtime | Socket.IO gateway (JWT) |
@@ -78,7 +78,7 @@ Modules talk through in-process events. Vendors sit behind interfaces (`CallProv
 
 ## 5. Data model (summary)
 
-- **Identity:** `User` (role PATIENT/DOCTOR/STAFF, staffRole, acsUserId), `Session`, `Device`, `Consent`
+- **Identity:** `User` (role PATIENT/DOCTOR/STAFF, staffRole), `Session`, `Device`, `Consent`
 - **Parties:** `Party` (PERSON or ORGANIZATION; NID and NIPT), `Patient` (1:1 with a PERSON party; userId stays null until activation)
 - **Policies:**
   - `Insurer`
@@ -89,7 +89,7 @@ Modules talk through in-process events. Vendors sit behind interfaces (`CallProv
   - `CoverageLimit` (kind MIN/MAX/FRANCHISE/DEDUCTIBLE/COUNT/…, basis, value, period)
   - `PremiumAdjustment` and `BenefitUsage`
 - **Doctors:** `Doctor`, `CareTeam`, `DoctorAssignment` (one active per patient), `OnCallShift`
-- **Calls:** `Call` (state, direction, eligibility snapshot, acsRoomId), `CallAttempt`, `CallEvent` (append-only), `CallbackRequest`, `CallFeedback`, `Consultation`
+- **Calls:** `Call` (state, direction, eligibility snapshot; its LiveKit room is `call-<id>`), `CallAttempt`, `CallEvent` (append-only), `CallbackRequest`, `CallFeedback`, `Consultation`
 - **Platform:** `Notification`, `AuditLog`, `SystemSetting`
 - **Conventions:** UUID v7 IDs, UTC timestamps, money as `Decimal(18,2)` plus a currency code; NIDs and notes encrypted at field level.
 - **Enforced by the database:** one active call per patient, one active call per doctor, a unique policy serial.
@@ -123,13 +123,14 @@ The engine returns reason codes, which the app translates. A call is counted whe
   - the end of a shift sets them OFFLINE;
   - rejected push tokens are invalidated.
 
-## 9. Calling (ACS)
+## 9. Calling (LiveKit)
 
-- **Rooms, not ACS's built-in 1:1 calling:**
-  - each call gets an ACS Room with only the patient in it at first;
-  - the **doctor is added only when they accept**;
-  - tokens use the `voip.join` scope and a 1-hour lifetime;
+- **One LiveKit room per call** (`call-<id>`):
+  - the patient gets a token for it when the call is created and waits there;
+  - the **doctor gets a token only when they accept**;
+  - a token is for that one room, carries only the user's id (no name) and lasts 10 minutes (LiveKit refreshes it for connected participants);
   - recording is off.
+- **Why LiveKit, not ACS:** Microsoft retires ACS as a standalone service on 30 September 2028. Rooms, phone numbers and the UI Library are removed, and new customers can't sign up for them from 23 October 2026. ACS also never had a React Native SDK. LiveKit has an official React Native SDK, is open source (Apache 2.0) so it can run in Albania, and can dial phone numbers.
 - **Routing is ours:**
   1. the personal doctor (30 s);
   2. up to N on-call doctors rung at the same time; **the first to accept wins** (`UPDATE … WHERE state='RINGING'`), and the rest get 409;
@@ -140,11 +141,12 @@ The engine returns reason codes, which the app translates. A call is counted whe
   RINGING → CANCELED | UNANSWERED     any → FAILED
   ```
   A single `transition()` function (optimistic locking) writes each change to `CallEvent` and emits events.
-- **Keeping in step with ACS:** the apps report `/joined` and `/end`, Event Grid sends events, and a sweeper runs every minute.
+- **Keeping in step with LiveKit:** the apps report `/joined` and `/end`, LiveKit webhooks send room events, and a sweeper runs every minute. Ending a call deletes its room, which disconnects both phones.
 - **Push:**
   - iOS: a VoIP push goes to CallKit. Every VoIP push must be reported to CallKit, and a call is **never cancelled with a VoIP push** (the socket and a 409 do that).
-  - Android: an FCM data message goes to ConnectionService.
-- **React Native gap:** ACS has no RN SDK, so we need our own Expo module wrapping the iOS and Android Calling SDKs. The fallback is the ACS native UI Library.
+  - Android: an FCM data message goes to Core-Telecom.
+  - `expo-callkit-telecom` reads both pushes natively, so a closed app rings. It owns the audio session; the app must not start LiveKit's own `AudioSession`.
+- **Phone numbers (PSTN):** LiveKit SIP dials a phone number into the call's room through a SIP trunk: a provider that reaches +355 numbers for the demo, an Albanian operator's trunk for production.
 
 ## 10. API (`/api/v1`)
 
@@ -155,14 +157,14 @@ The engine returns reason codes, which the app translates. A call is counted whe
 | calls | create, ack, accept, decline, cancel, token, joined, end, feedback, history |
 | callbacks · consultations · doctor | callback queue; notes (draft, then sign); doctor status, shifts, patients |
 | admin | coverage-types, parties, policies (+ activate/suspend/cancel, beneficiaries, coverages, adjustments, history), doctors, care-teams, assignments, shifts, calls, settings, audit-logs |
-| system | `/webhooks/acs` (Event Grid), health |
+| system | `/webhooks/livekit`, health |
 
 WebSocket `/realtime`: `call.incoming`, `call.state_changed`, `call.cancelled`, `doctor.availability_changed`. Errors follow RFC 7807 with stable codes.
 
 ## 11. Security (Albania)
 
 - **Law:** Albanian personal-data-protection law, which follows the GDPR; the regulator is the IDP Commissioner. Ministry of Health and Order of Physicians rules apply to care, and AMF rules to policy records.
-- **Data location:** everything stored stays in Albania. ACS (Europe), APNs and FCM see only media passing through, or IDs.
+- **Data location:** everything stored stays in Albania. LiveKit Cloud (EU), APNs and FCM see only media passing through, or IDs. A self-hosted LiveKit server keeps the media in Albania too.
 - **Encryption:** TLS everywhere, field-level encryption for NIDs and notes, encrypted backups copied to a second site.
 - **No health data** in logs, pushes or error reports (self-hosted GlitchTip). No analytics SDKs.
 - **Mobile:** SecureStore, biometric lock, screenshot blocking, no cached health data saved on the device.
@@ -176,15 +178,15 @@ WebSocket `/realtime`: `call.incoming`, `call.state_changed`, `call.cancelled`, 
   - Postgres with a replica and pgBackRest backups;
   - Redis;
   - Prometheus, Grafana, Loki and GlitchTip.
-- **Azure:** one ACS resource per environment (Europe data location) and an Event Grid subscription.
+- **LiveKit:** one LiveKit Cloud project per environment (EU data region) for now. If media must stay in Albania, the LiveKit server (and its SIP service) runs on the Albanian VMs next to the API.
 - **CI:** GitHub Actions (lint, typecheck, test, contract drift). Apps are built and published with EAS Build and Submit.
 
 ## 13. Phases
 
-0. **Foundations and spike:** monorepo, CI; **the ACS bridge + CallKeep + VoIP push ringing a closed app** on real phones.
+0. **Foundations and spike:** monorepo, CI; **LiveKit + expo-callkit-telecom + VoIP push ringing a closed app** on real phones.
 1. **Policy administration:** staff auth, the policy schema, the admin policy wizard, the eligibility engine.
 2. **Patient app and doctors:** activation, the coverage screen, doctors and assignments, availability, realtime, push.
-3. **Calling:** state machine, routing, ACS adapter, callbacks, notes, in-call screen.
+3. **Calling:** state machine, routing, LiveKit adapter, callbacks, notes, in-call screen.
 4. **Operations:** call monitor, audit viewer, settings, production in Albania, monitoring, restore drill.
 5. **Launch:** penetration test, load tests, DPIA, app stores.
 
@@ -192,7 +194,7 @@ WebSocket `/realtime`: `call.incoming`, `call.state_changed`, `call.cancelled`, 
 
 ## 14. Open questions
 
-- **L1:** Can call media go through ACS in Europe? If yes, can the rest of the system run on Azure (Italy North)? If no, we self-host a media server in Albania. answer: we will use ACS, the app for now will be just a demo on my local iphone. 
+- **L1:** Can call media go through LiveKit Cloud in the EU? If yes, stay on LiveKit Cloud (the Scale plan adds EU region pinning and a DPA). If no, self-host LiveKit in Albania; the app doesn't change. For now: LiveKit Cloud, and the app is only a demo on a local iPhone.
 - **L2:** What the data-protection, telemedicine, medical-record and AMF rules actually require.
 - **D2:** The 24/7 model: fallback pool size, shifts, answer-time target.
 - **P1:** Which coverage types unlock telemedicine, and their COUNT limits.
