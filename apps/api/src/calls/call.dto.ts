@@ -42,19 +42,16 @@ export class CallDto {
   endedAt: Date | null;
 }
 
-/** What the app needs to join the call's ACS room. */
+/** What the app needs to join the call's LiveKit room. */
 export class CallJoinDto {
-  @ApiProperty({ description: 'ACS room id' })
-  roomId: string;
+  @ApiProperty({ example: 'wss://your-project.livekit.cloud' })
+  serverUrl: string;
 
-  @ApiProperty({ description: 'The caller’s ACS identity' })
-  acsUserId: string;
+  @ApiProperty({ example: 'call-0199a1b2-…' })
+  roomName: string;
 
-  @ApiProperty({ description: 'ACS access token with the voip.join scope' })
+  @ApiProperty({ description: 'LiveKit access token for this room only' })
   token: string;
-
-  @ApiProperty()
-  expiresOn: Date;
 }
 
 export class CallWithJoinDto {

@@ -4,12 +4,11 @@ dist/
 .env
 *.log
 
-# Expo
+# Expo (apps/mobile/.gitignore ignores its generated /ios and /android folders; don't ignore
+# every ios/ and android/ folder here, or local Expo modules lose their native code)
 .expo/
 web-build/
 expo-env.d.ts
-ios/
-android/
 
 # Prisma generated client
 apps/api/src/generated/

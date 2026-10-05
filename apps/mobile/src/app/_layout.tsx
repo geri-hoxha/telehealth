@@ -1,10 +1,16 @@
+import { registerGlobals } from '@livekit/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '@/auth/AuthProvider';
+import { linkAudioEngineToCallKit } from '@/calls/audio-engine';
 import { CallCoordinator } from '@/calls/CallCoordinator';
+
+// WebRTC for LiveKit. The phone's call screen (expo-callkit-telecom) owns the audio session.
+registerGlobals({ autoConfigureAudioSession: false });
+linkAudioEngineToCallKit();
 
 // Keep the splash screen up until we know whether a saved session exists.
 void SplashScreen.preventAutoHideAsync();
@@ -44,7 +50,6 @@ function RootNavigator() {
         <Stack.Protected guard={!!user}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="call" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
-          <Stack.Screen name="incoming" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
         </Stack.Protected>
       </Stack>
       <CallCoordinator />

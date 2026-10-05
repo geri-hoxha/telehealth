@@ -4,8 +4,8 @@ A pnpm + Turborepo monorepo:
 
 | App | Stack | What it does now |
 |---|---|---|
-| `apps/mobile` | Expo SDK 57, Expo Router, TanStack Query, React Hook Form + Zod, Azure Communication Services (own Expo module) | Login page, a main page (top bar, health card, bottom tabs) and voice/video calls: patients call a doctor from the Mjeku tab, and the doctor's phone rings through CallKit (iOS) or a full-screen notification (Android). Other tabs are placeholders. UI in Albanian. |
-| `apps/api` | NestJS 12, Prisma 7, PostgreSQL, Azure Communication Services (identity + Rooms) | Basic JWT auth: `register`, `login`, `me`. Calls: `/calls` (create, accept, end, …), push tokens: `/devices`, with APNs VoIP and FCM pushes. Swagger at `/api/docs`. |
+| `apps/mobile` | Expo SDK 57, Expo Router, TanStack Query, React Hook Form + Zod, LiveKit, expo-callkit-telecom | Login page, a main page (top bar, health card, bottom tabs) and voice/video calls: patients call a doctor from the Mjeku tab, and the doctor's phone rings through CallKit (iOS) or a full-screen notification (Android). Other tabs are placeholders. UI in Albanian. |
+| `apps/api` | NestJS 12, Prisma 7, PostgreSQL, LiveKit server SDK | Basic JWT auth: `register`, `login`, `me`. Calls: `/calls` (create, accept, end, …), push tokens: `/devices`, with APNs VoIP and FCM pushes. Swagger at `/api/docs`. |
 
 The long-term architecture is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -14,7 +14,7 @@ The long-term architecture is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Node.js 22+ and pnpm (the version is pinned in `package.json`; `corepack enable` picks it up)
 - PostgreSQL running locally (port 5432)
 - The Telehealth **development build** on your phone. Expo Go can't run the app because calls need native code (see [Calls](#calls)).
-- An Azure Communication Services resource for calls (see [docs/CALLS_SETUP.md](docs/CALLS_SETUP.md))
+- A free [LiveKit Cloud](https://cloud.livekit.io) project for calls (see [docs/CALLS_SETUP.md](docs/CALLS_SETUP.md))
 
 ## First-time setup
 
@@ -22,14 +22,14 @@ The long-term architecture is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 pnpm install
 
 # API config: copy the example and fill in your Postgres password, a random JWT secret
-# and your ACS connection string (plus the optional APNs/FCM keys, see docs/CALLS_SETUP.md)
+# and your LiveKit project's URL, API key and secret (plus the optional APNs/FCM keys, see docs/CALLS_SETUP.md)
 cp apps/api/.env.example apps/api/.env
 
-pnpm db:migrate   # creates the "telehealth" database and the users table
-pnpm db:seed      # creates the demo user
+pnpm db:migrate   # creates the "telehealth" database and its tables
+pnpm db:seed      # creates the demo patient and doctor
 ```
 
-Demo login: **geri** / **1234**
+Demo logins: **geri** / **1234** (patient) and **doktor** / **1234** (doctor)
 
 ## Running
 
@@ -47,9 +47,9 @@ pnpm dev:mobile   # Expo dev server; open it from the Telehealth development bui
 
 Patients call a doctor from **Mjeku → Thirrje zanore / Videothirrje**. The first free doctor's phone rings, even when the app is closed.
 
-Setting up Azure Communication Services, the Apple push key and Firebase is described step by step in [docs/CALLS_SETUP.md](docs/CALLS_SETUP.md). In short:
+Setting up LiveKit, the Apple push key and Firebase is described step by step in [docs/CALLS_SETUP.md](docs/CALLS_SETUP.md). In short:
 
-1. Create a Communication Services resource (data location **Europe**), and put its connection string in `apps/api/.env` as `ACS_CONNECTION_STRING`. Restart `pnpm dev:api` after editing `.env`.
+1. Create a project at [cloud.livekit.io](https://cloud.livekit.io) (free plan, no card; pick the **EU** data region), then copy its URL, API key and secret into `apps/api/.env`. Restart `pnpm dev:api` after editing `.env`.
 2. **Development build** (once, and again whenever a package or module with native code changes). EAS uploads the git repository, so the repo root must be a git repo first (`git init` at the root). Then:
 
    ```sh
@@ -73,5 +73,6 @@ pnpm --filter api prisma:migrate   # after changing apps/api/prisma/schema.prism
 
 ## Notes
 
+- If `corepack enable` / `pnpm` fails with `Cannot find matching keyid`, your corepack is too old to verify pnpm's signature. Update it (`npm install -g corepack@latest`) or run the pinned pnpm directly: `npx pnpm@12.6.0 install`.
 - The API compiles with plain `tsc` (and `tsc-watch` in dev) instead of the Nest CLI. The Nest 12 CLI crashes on Node 22.13 (`ERR_REQUIRE_CYCLE_MODULE`); after upgrading Node you can switch back to `nest build` / `nest start --watch`.
 - The health card's plan, member number and expiry date are sample data (`apps/mobile/src/mock/healthCard.ts`); the holder name comes from the logged-in user.

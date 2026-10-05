@@ -1,9 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { CallMedia } from '@modules/acs-calling';
 import { router } from 'expo-router';
 import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { CallMedia } from '@/api/calls';
 import { useAuth } from '@/auth/AuthProvider';
 import { colors, radius, spacing } from '@/theme';
 
