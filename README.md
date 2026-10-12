@@ -4,8 +4,8 @@ A pnpm + Turborepo monorepo:
 
 | App | Stack | What it does now |
 |---|---|---|
-| `apps/mobile` | Expo SDK 57, Expo Router, TanStack Query, React Hook Form + Zod, LiveKit, expo-callkit-telecom | Login page, a main page (top bar, health card, bottom tabs) and voice/video calls: patients call a doctor from the Mjeku tab, and the doctor's phone rings through CallKit (iOS) or a full-screen notification (Android). Other tabs are placeholders. UI in Albanian. |
-| `apps/api` | NestJS 12, Prisma 7, PostgreSQL, LiveKit server SDK | Basic JWT auth: `register`, `login`, `me`. Calls: `/calls` (create, accept, end, …), push tokens: `/devices`, with APNs VoIP and FCM pushes. Swagger at `/api/docs`. |
+| `apps/mobile` | Expo SDK 57, Expo Router, TanStack Query, React Hook Form + Zod, LiveKit, expo-callkit-telecom | One app for patients and doctors, in Albanian, English and Macedonian. Patients: home (stories, health card, benefits, articles), activities, a one-button call to the first free doctor (queue, retries), medical folders, subscription. Doctors: incoming-call invitation, add a doctor to a call, call history with "Free line", patients with folders and temporary blocks. |
+| `apps/api` | NestJS 12, Prisma 7, PostgreSQL, LiveKit server SDK | Auth (email, sign-up with email confirmation, reset codes, biometric keys), calls with a queue, push (APNs VoIP + alerts, FCM), medical folders with comments and documents, events, notifications, subscriptions and claims, content. Swagger at `/api/docs`. |
 
 The long-term architecture is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -26,10 +26,22 @@ pnpm install
 cp apps/api/.env.example apps/api/.env
 
 pnpm db:migrate   # creates the "telehealth" database and its tables
-pnpm db:seed      # creates the demo patient and doctor
+pnpm db:seed      # demo accounts and content (re-running it resets the demo data)
 ```
 
-Demo logins: **geri** / **1234** (patient) and **doktor** / **1234** (doctor)
+Demo logins (password **1234** for all):
+
+| Email | Role | Notes |
+|---|---|---|
+| `geri@telehealth.al` | patient | Active Premium subscription, folders, claims, call history |
+| `arta@telehealth.al` | patient | No subscription, to try "My registration" |
+| `elton@telehealth.al` | patient | Blocked from calling for 2 days |
+| `doktor@telehealth.al` | doctor | Arben Mjeku; specialist of the live activity |
+| `drita@`, `besnik@`, `elena@telehealth.al` | doctors | For "Add doctor" and the queue |
+
+To activate a subscription in the app: insurance **Shëndetësore 4021883011230059** or **Familjare 5100200030004000**, or the prepaid codes **TH-30-DEMO**, **TH-90-DEMO**.
+
+Emails (sign-up confirmation links, password reset codes) are written to the API's log until `RESEND_API_KEY` is set.
 
 ## Running
 
@@ -45,7 +57,7 @@ pnpm dev:mobile   # Expo dev server; open it from the Telehealth development bui
 
 ## Calls
 
-Patients call a doctor from **Mjeku → Thirrje zanore / Videothirrje**. The first free doctor's phone rings, even when the app is closed.
+Patients call from the big **Thirr** button. The call waits in a queue and rings the first free doctor; if they don't answer, it tries the next one. The doctor's phone rings even when the app is closed (with push set up).
 
 Setting up LiveKit, the Apple push key and Firebase is described step by step in [docs/CALLS_SETUP.md](docs/CALLS_SETUP.md). In short:
 
@@ -61,7 +73,7 @@ Setting up LiveKit, the Apple push key and Firebase is described step by step in
    ```
 
    An iPhone needs a paid Apple Developer account, and **Developer Mode** turned on (Settings → Privacy & Security). Install the build from the link EAS prints, then run `pnpm dev:mobile` and open the dev server from the app.
-3. **Testing needs two phones:** log in as **doktor** on one and **geri** on the other, then call from geri's phone.
+3. **Testing needs two phones:** log in as **doktor@telehealth.al** on one and **geri@telehealth.al** on the other, then call from geri's phone. With one phone, see "Testing on an iPhone without a paid Apple account" in [docs/CALLS_SETUP.md](docs/CALLS_SETUP.md).
 
 ## Useful commands
 
@@ -75,4 +87,4 @@ pnpm --filter api prisma:migrate   # after changing apps/api/prisma/schema.prism
 
 - If `corepack enable` / `pnpm` fails with `Cannot find matching keyid`, your corepack is too old to verify pnpm's signature. Update it (`npm install -g corepack@latest`) or run the pinned pnpm directly: `npx pnpm@12.6.0 install`.
 - The API compiles with plain `tsc` (and `tsc-watch` in dev) instead of the Nest CLI. The Nest 12 CLI crashes on Node 22.13 (`ERR_REQUIRE_CYCLE_MODULE`); after upgrading Node you can switch back to `nest build` / `nest start --watch`.
-- The health card's plan, member number and expiry date are sample data (`apps/mobile/src/mock/healthCard.ts`); the holder name comes from the logged-in user.
+- The partner clinic network page and the seeded policies, codes, stories, benefits, articles and activities are sample data until an admin web exists.

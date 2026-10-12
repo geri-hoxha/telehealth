@@ -7,7 +7,7 @@ export class RegisterDeviceDto {
   @IsEnum(DevicePlatform)
   platform: DevicePlatform;
 
-  @ApiProperty({ enum: PushKind, description: 'VOIP for an iOS PushKit token, FCM for an Android token' })
+  @ApiProperty({ enum: PushKind, description: 'VOIP: an iOS PushKit token (calls). APNS: an iOS notification token. FCM: an Android token (both)' })
   @IsEnum(PushKind)
   kind: PushKind;
 

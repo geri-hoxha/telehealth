@@ -15,7 +15,7 @@ export type ApnsResult = { ok: true } | { ok: false; status: number; reason: str
 /** Apple accepts a provider token for up to an hour; refresh a bit earlier. */
 const TOKEN_LIFETIME_MS = 50 * 60 * 1000;
 
-/** Sends VoIP pushes over APNs' HTTP/2 API with token-based (.p8) authentication. */
+/** Sends pushes over APNs' HTTP/2 API with token-based (.p8) authentication. */
 export class ApnsClient {
   private readonly key: KeyObject;
   private providerToken?: { value: string; createdAt: number };
@@ -24,7 +24,29 @@ export class ApnsClient {
     this.key = createPrivateKey(config.privateKey);
   }
 
+  /** A VoIP push for CallKit (the ".voip" topic). */
   sendVoip(deviceToken: string, payload: object, expiresInSeconds: number): Promise<ApnsResult> {
+    return this.send(deviceToken, payload, {
+      pushType: 'voip',
+      topic: `${this.config.bundleId}.voip`,
+      expiresInSeconds,
+    });
+  }
+
+  /** A regular notification with an `aps.alert`. */
+  sendAlert(deviceToken: string, payload: object): Promise<ApnsResult> {
+    return this.send(deviceToken, payload, {
+      pushType: 'alert',
+      topic: this.config.bundleId,
+      expiresInSeconds: 24 * 60 * 60,
+    });
+  }
+
+  private send(
+    deviceToken: string,
+    payload: object,
+    { pushType, topic, expiresInSeconds }: { pushType: 'voip' | 'alert'; topic: string; expiresInSeconds: number },
+  ): Promise<ApnsResult> {
     const host = this.config.production
       ? 'https://api.push.apple.com'
       : 'https://api.sandbox.push.apple.com';
@@ -37,8 +59,8 @@ export class ApnsClient {
         ':method': 'POST',
         ':path': `/3/device/${deviceToken}`,
         authorization: `bearer ${this.getProviderToken()}`,
-        'apns-push-type': 'voip',
-        'apns-topic': `${this.config.bundleId}.voip`,
+        'apns-push-type': pushType,
+        'apns-topic': topic,
         'apns-priority': '10',
         'apns-expiration': String(Math.floor(Date.now() / 1000) + expiresInSeconds),
         'content-type': 'application/json',

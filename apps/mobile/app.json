@@ -8,7 +8,12 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "al.telehealth.app"
+      "bundleIdentifier": "al.telehealth.app",
+      "appleTeamId": "D2687NLBYF",
+      "infoPlist": {
+        "CFBundleDevelopmentRegion": "sq",
+        "CFBundleAllowMixedLocalizations": true
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -23,13 +28,21 @@
     "plugins": [
       "expo-router",
       "expo-status-bar",
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Telehealth përdor Face ID që të hyni pa fjalëkalim."
+        }
+      ],
       "expo-splash-screen",
       [
         "expo-build-properties",
         {
           "android": {
             "minSdkVersion": 26
+          },
+          "ios": {
+            "enableSceneSupport": true
           }
         }
       ],
@@ -47,14 +60,45 @@
           "cameraPermission": "Telehealth përdor kamerën për videothirrjet me mjekun.",
           "microphonePermission": "Telehealth përdor mikrofonin për thirrjet me mjekun.",
           "incomingCallTimeout": 40,
-          "outgoingCallTimeout": 60,
+          "outgoingCallTimeout": 360,
           "includesCallsInRecents": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Telehealth përdor fotot tuaja për foton e profilit dhe për dokumentet mjekësore.",
+          "cameraPermission": "Telehealth përdor kamerën për videothirrjet, foton e profilit dhe dokumentet mjekësore.",
+          "microphonePermission": "Telehealth përdor mikrofonin për thirrjet me mjekun."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Telehealth përdor Face ID që të hyni pa fjalëkalim."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0D9488"
         }
       ]
     ],
     "scheme": "telehealth",
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "55fff5ad-8a28-4da2-a2d2-ea2fb53aef0e"
+      }
+    },
+    "locales": {
+      "sq": "./locales/sq.json",
+      "en": "./locales/en.json",
+      "mk": "./locales/mk.json"
     }
   }
 }

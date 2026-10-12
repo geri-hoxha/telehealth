@@ -1,65 +1,55 @@
 import { apiRequest } from './client';
+import type { Call, CallMedia, CallWithJoin, Person, PushDevice } from './types';
 
-export type CallMedia = 'AUDIO' | 'VIDEO';
-
-export type CallState = 'RINGING' | 'ACCEPTED' | 'ENDED' | 'DECLINED' | 'CANCELED' | 'UNANSWERED' | 'FAILED';
-
-export interface Call {
-  id: string;
-  state: CallState;
-  media: CallMedia;
-  patient: { id: string; name: string };
-  doctor: { id: string; name: string };
-  createdAt: string;
-  answeredAt: string | null;
-  endedAt: string | null;
-}
-
-/** What the app needs to join the call's LiveKit room. */
-export interface CallJoin {
-  serverUrl: string;
-  roomName: string;
-  token: string;
-}
-
-export interface CallWithJoin {
-  call: Call;
-  join: CallJoin;
-}
-
-/** A phone's push token for incoming calls. */
-export interface PushDevice {
-  platform: 'IOS' | 'ANDROID';
-  /** VOIP: an iOS PushKit token. FCM: an Android Firebase token. */
-  kind: 'VOIP' | 'FCM';
-  token: string;
+export interface CallOptions {
+  /** Ring this doctor first when free ("Call now" after a free line). */
+  preferredDoctorId?: string;
+  /** A live event the patient joined: its specialist is rung first. */
+  eventId?: string;
 }
 
 export const callsApi = {
-  /** Patient: call a doctor. */
-  create: (token: string, media: CallMedia) =>
-    apiRequest<CallWithJoin>('/calls', { method: 'POST', body: { media }, token }),
+  /** Patient: call a doctor. The call waits in the queue until a doctor answers. */
+  create: (media: CallMedia, options: CallOptions = {}, token?: string) =>
+    apiRequest<CallWithJoin>('/calls', { method: 'POST', body: { media, ...options }, token }),
 
-  get: (token: string, callId: string) => apiRequest<Call>(`/calls/${callId}`, { token }),
+  /** Newest first; `before` pages back. */
+  history: (before?: string) =>
+    apiRequest<Call[]>(`/calls${before ? `?before=${encodeURIComponent(before)}` : ''}`),
 
-  /** Doctor: the call ringing for me right now, if any. */
-  incoming: (token: string) => apiRequest<{ call: Call | null }>('/calls/incoming', { token }),
+  get: (callId: string, token?: string) => apiRequest<Call>(`/calls/${callId}`, { token }),
 
-  accept: (token: string, callId: string) =>
+  /** Doctor: the call ringing for me right now, if any, and this ring's id (the incoming call's eventId). */
+  incoming: (token?: string) =>
+    apiRequest<{ call: Call | null; ringId: string | null }>('/calls/incoming', { token }),
+
+  /** Doctor: answer a call or an "Add doctor" invite. 409 once it no longer rings for me. */
+  accept: (callId: string, token?: string) =>
     apiRequest<CallWithJoin>(`/calls/${callId}/accept`, { method: 'POST', token }),
 
-  /** Doctor: reject while ringing. 409 once the call is no longer ringing (e.g. answered on another device). */
-  decline: (token: string, callId: string) =>
+  /** Doctor: reject while ringing; the call moves on to another doctor. */
+  decline: (callId: string, token?: string) =>
     apiRequest<Call>(`/calls/${callId}/decline`, { method: 'POST', token }),
 
-  /** Either side: hang up (also cancels or declines a call that is still ringing). */
-  end: (token: string, callId: string) => apiRequest<Call>(`/calls/${callId}/end`, { method: 'POST', token }),
+  /** Anyone: hang up (also cancels a waiting call). */
+  end: (callId: string, token?: string) => apiRequest<Call>(`/calls/${callId}/end`, { method: 'POST', token }),
+
+  availableDoctors: (query: string) =>
+    apiRequest<Person[]>(`/calls/available-doctors?q=${encodeURIComponent(query)}`),
+
+  invite: (callId: string, doctorId: string) =>
+    apiRequest<Call>(`/calls/${callId}/invites`, { method: 'POST', body: { doctorId } }),
+
+  feedback: (callId: string, rating: number, comment: string | null) =>
+    apiRequest<Call>(`/calls/${callId}/feedback`, { method: 'POST', body: { rating, comment } }),
+
+  freeLine: (callId: string) => apiRequest<void>(`/calls/${callId}/free-line`, { method: 'POST' }),
 };
 
 export const devicesApi = {
-  register: (token: string, device: PushDevice) =>
+  register: (device: PushDevice, token?: string) =>
     apiRequest<void>('/devices', { method: 'POST', body: device, token }),
 
-  unregister: (token: string, device: PushDevice) =>
+  unregister: (device: PushDevice, token?: string) =>
     apiRequest<void>('/devices', { method: 'DELETE', body: device, token }),
 };

@@ -7,11 +7,23 @@ import { ApnsClient } from './apns.client';
 import { FcmClient, type FcmServiceAccount } from './fcm.client';
 
 export interface IncomingCallPush {
+  /** The attempt or invite id: one ring. The phone drops a second push with the same id. */
+  ringId: string;
   callId: string;
   /** The patient's user id. */
   callerId: string;
   media: CallMedia;
 }
+
+export interface NotificationPush {
+  title: string;
+  body: string;
+  /** Read by the app when the notification is tapped. FCM data values must be strings. */
+  data: Record<string, string>;
+}
+
+/** The Android notification channel the app creates for these notifications. */
+const ANDROID_CHANNEL_ID = 'notifications';
 
 /**
  * What the ringing screen shows as the caller. Pushes carry only ids, so no patient names pass
@@ -20,10 +32,12 @@ export interface IncomingCallPush {
 const CALLER_DISPLAY_NAME = 'Pacient';
 
 /**
- * Wakes doctors' phones: a PushKit VoIP push on iOS (shown by CallKit) and a high-priority FCM
- * data message on Android (shown as a full-screen incoming-call notification). The app's
- * expo-callkit-telecom module reads both natively, so a closed app rings too.
- * Either channel is skipped with a warning when its credentials are not configured.
+ * Wakes doctors' phones for calls: a PushKit VoIP push on iOS (shown by CallKit) and a
+ * high-priority FCM data message on Android (shown as a full-screen incoming-call notification).
+ * The app's expo-callkit-telecom module reads both natively, so a closed app rings too.
+ * Also sends regular notifications (APNs alerts, FCM notifications); expo-callkit-telecom passes
+ * those on to expo-notifications. Either channel is skipped with a warning when its credentials
+ * are not configured.
  */
 @Injectable()
 export class PushService {
@@ -71,13 +85,13 @@ export class PushService {
   async sendIncomingCall(userId: string, push: IncomingCallPush, ringSeconds: number): Promise<void> {
     // The payload format expo-callkit-telecom parses (its IncomingCallEvent).
     const incomingCall = {
-      eventId: push.callId, // One ring per call; Android drops a repeated push with the same id.
+      eventId: push.ringId,
       serverCallId: push.callId,
       hasVideo: push.media === 'VIDEO',
       startedAt: new Date().toISOString(),
       caller: { id: push.callerId, displayName: CALLER_DISPLAY_NAME },
     };
-    const devices = await this.prisma.device.findMany({ where: { userId } });
+    const devices = await this.prisma.device.findMany({ where: { userId, kind: { in: ['VOIP', 'FCM'] } } });
 
     await Promise.all(
       devices.map(async (device) => {
@@ -105,6 +119,42 @@ export class PushService {
           }
         } catch (error) {
           this.logger.error(`Push to device ${device.id} failed: ${String(error)}`);
+        }
+      }),
+    );
+  }
+
+  /** Shows a notification on every phone of the user. Never throws. */
+  async sendNotification(userId: string, push: NotificationPush): Promise<void> {
+    const devices = await this.prisma.device.findMany({ where: { userId, kind: { in: ['APNS', 'FCM'] } } });
+
+    await Promise.all(
+      devices.map(async (device) => {
+        try {
+          if (device.kind === 'APNS') {
+            if (!this.apns) return;
+            // expo-notifications reads the app's data from "body" on iOS.
+            const payload = { aps: { alert: { title: push.title, body: push.body }, sound: 'default' }, body: push.data };
+            const result = await this.apns.sendAlert(device.token, payload);
+            if (!result.ok) {
+              this.logger.warn(`APNs rejected a notification (${result.status} ${result.reason})`);
+              if (result.status === 410 || result.reason === 'BadDeviceToken') await this.removeDevice(device.id);
+            }
+          } else {
+            if (!this.fcm) return;
+            const result = await this.fcm.sendNotification(
+              device.token,
+              { title: push.title, body: push.body },
+              push.data,
+              ANDROID_CHANNEL_ID,
+            );
+            if (!result.ok) {
+              this.logger.warn(`FCM rejected a notification (${result.status} ${result.reason})`);
+              if (result.reason === 'UNREGISTERED' || result.status === 404) await this.removeDevice(device.id);
+            }
+          }
+        } catch (error) {
+          this.logger.error(`Notification to device ${device.id} failed: ${String(error)}`);
         }
       }),
     );

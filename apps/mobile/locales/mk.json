@@ -1,0 +1,6 @@
+{
+  "NSCameraUsageDescription": "Telehealth ја користи камерата за видео повици, профилната фотографија и медицинските документи.",
+  "NSMicrophoneUsageDescription": "Telehealth го користи микрофонот за повици со лекарот.",
+  "NSPhotoLibraryUsageDescription": "Telehealth ги користи вашите фотографии за профилната фотографија и медицинските документи.",
+  "NSFaceIDUsageDescription": "Telehealth го користи Face ID за да се најавите без лозинка."
+}

@@ -1,11 +1,15 @@
 import { mediaDevices } from '@livekit/react-native-webrtc';
+import { useQueryClient } from '@tanstack/react-query';
 import * as CallKit from 'expo-callkit-telecom';
 import { Room, RoomEvent } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { callsApi, type Call, type CallMedia, type CallState } from '@/api/calls';
+import { callsApi, type CallOptions } from '@/api/calls';
 import { ApiError } from '@/api/client';
+import { queryKeys } from '@/api/queries';
+import type { Call, CallMedia, CallState } from '@/api/types';
 import { useAuth } from '@/auth/AuthProvider';
+import { useI18n } from '@/i18n';
 import { activeCall } from './active-call';
 import { ensureCallPermissions } from './permissions';
 
@@ -17,23 +21,41 @@ const STATE_POLL_MS = 2000;
  */
 const REMOTE_GONE_MS = 15_000;
 
-/** starting: talking to the API · ringing: waiting for the doctor · connecting: joining after answering */
-export type CallPhase = 'starting' | 'ringing' | 'connecting' | 'inCall' | 'ended';
+/**
+ * starting: talking to the API · waiting: in the queue, no doctor ringing · ringing: a doctor's
+ * phone rings · connecting: answered, joining the room · inCall · ended
+ */
+export type CallPhase = 'starting' | 'waiting' | 'ringing' | 'connecting' | 'inCall' | 'ended';
+
+/** Why the call screen shows the call as over; the screen translates it. */
+export type EndReason =
+  | 'ended'
+  | 'canceled'
+  | 'linesBusy'
+  | 'failed'
+  | 'permissions'
+  | 'alreadyActive'
+  | 'conflict'
+  | 'subscription'
+  | 'blocked'
+  | 'eventNotLive'
+  | 'network';
 
 /**
- * outgoing: the patient calls a doctor.
- * answer: the doctor answered on the phone's call screen (CallKit / Android); `sessionId` and
- * `requestId` come from expo-callkit-telecom's answer event.
+ * outgoing: the patient calls; the system picks the doctor.
+ * answer: a doctor answered on the phone's call screen (CallKit / Android) or the in-app invitation;
+ * `sessionId` and `requestId` come from expo-callkit-telecom's answer event.
  */
 export type CallRequest =
-  | { kind: 'outgoing'; media: CallMedia }
+  | ({ kind: 'outgoing'; media: CallMedia } & CallOptions)
   | { kind: 'answer'; callId: string; media: CallMedia; sessionId: string; requestId: string };
 
-const END_MESSAGES: Partial<Record<CallState, string>> = {
-  DECLINED: 'Mjeku nuk mund ta pranojë thirrjen tani.',
-  UNANSWERED: 'Nuk u përgjigj askush. Provoni përsëri pas pak.',
-  CANCELED: 'Thirrja u anulua.',
-  FAILED: 'Thirrja dështoi. Provoni përsëri.',
+const END_REASONS: Partial<Record<CallState, EndReason>> = {
+  ENDED: 'ended',
+  CANCELED: 'canceled',
+  UNANSWERED: 'linesBusy',
+  DECLINED: 'linesBusy',
+  FAILED: 'failed',
 };
 
 /** Why the phone's call screen should show the call as over, for calls the other side ended. */
@@ -42,14 +64,34 @@ const SYSTEM_END_REASONS: Partial<Record<CallState, CallKit.CallEndedReason>> = 
   FAILED: 'failed',
 };
 
-function errorMessage(error: unknown): string {
+function errorReason(error: unknown): EndReason {
   if (error instanceof ApiError) {
-    if (error.code === 'NO_DOCTOR_AVAILABLE') return 'Asnjë mjek nuk është i lirë tani. Provoni pas pak.';
-    if (error.code === 'CALL_ALREADY_ACTIVE') return 'Keni tashmë një thirrje në vazhdim.';
-    if (error.code === 'CALL_STATE_CONFLICT') return 'Thirrja nuk është më aktive.';
-    if (error.status === 0) return 'Nuk ka lidhje me serverin.';
+    if (error.status === 0) return 'network';
+    switch (error.code) {
+      case 'NO_DOCTOR_AVAILABLE':
+        return 'linesBusy';
+      case 'CALL_ALREADY_ACTIVE':
+        return 'alreadyActive';
+      case 'CALL_STATE_CONFLICT':
+        return 'conflict';
+      case 'SUBSCRIPTION_REQUIRED':
+        return 'subscription';
+      case 'PATIENT_BLOCKED':
+        return 'blocked';
+      case 'EVENT_NOT_LIVE':
+      case 'EVENT_NOT_JOINED':
+        return 'eventNotLive';
+    }
   }
-  return 'Nuk mund të fillojmë thirrjen. Provoni përsëri.';
+  return 'failed';
+}
+
+/** The phase a call that isn't connected yet is in, from its state on the server. */
+function waitingPhase(state: CallState): CallPhase | null {
+  if (state === 'QUEUED') return 'waiting';
+  if (state === 'RINGING') return 'ringing';
+  if (state === 'ACCEPTED') return 'connecting';
+  return null;
 }
 
 /**
@@ -61,10 +103,13 @@ function errorMessage(error: unknown): string {
  */
 export function useCall(request: CallRequest) {
   const { user, token } = useAuth();
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
   const [room] = useState(() => new Room({ adaptiveStream: { pixelDensity: 'screen' }, dynacast: true }));
-  const [phase, setPhase] = useState<CallPhase>('starting');
+  const [phase, setPhase] = useState<CallPhase>(request.kind === 'answer' ? 'connecting' : 'starting');
   const [call, setCall] = useState<Call | null>(null);
-  const [endMessage, setEndMessage] = useState<string | null>(null);
+  const [endReason, setEndReason] = useState<EndReason | null>(null);
+  const [blockedUntil, setBlockedUntil] = useState<string | null>(null);
   const [connectedAt, setConnectedAt] = useState<number | null>(null);
   const [muted, setMutedState] = useState(false);
   const [speakerOn, setSpeakerOnState] = useState(request.media === 'VIDEO');
@@ -83,31 +128,33 @@ export function useCall(request: CallRequest) {
 
   /**
    * Ends the call once: leaves the room, closes the phone's call screen, tells the API and shows
-   * `message`. `systemReason` is set when the other side or the server ended the call; without it
-   * this phone hung up.
+   * why. `systemReason` is set when the other side or the server ended the call; without it this
+   * phone hung up.
    */
   const finish = useCallback(
-    (message: string, systemReason?: CallKit.CallEndedReason) => {
+    (reason: EndReason, systemReason?: CallKit.CallEndedReason) => {
       if (endedRef.current) return;
       endedRef.current = true;
       setPhase('ended');
-      setEndMessage(message);
+      setEndReason(reason);
       activeCall.set(null);
       void room.disconnect();
 
       const sessionId = sessionIdRef.current;
       if (sessionId) {
-        const closeSystemCall = systemReason
-          ? CallKit.reportCallEnded(sessionId, systemReason)
-          : CallKit.endCall(sessionId);
+        const closeSystemCall = systemReason ? CallKit.reportCallEnded(sessionId, systemReason) : CallKit.endCall(sessionId);
         void closeSystemCall.catch(() => {});
       }
       const callId = callIdRef.current;
       if (callId && token) {
-        void callsApi.end(token, callId).catch(() => {});
+        void callsApi
+          .end(callId, token)
+          .then(setCall)
+          .catch(() => {})
+          .finally(() => void queryClient.invalidateQueries({ queryKey: queryKeys.calls }));
       }
     },
-    [room, token],
+    [room, token, queryClient],
   );
 
   /** The other side is in the room: the call is on. */
@@ -146,36 +193,33 @@ export function useCall(request: CallRequest) {
     if (!token || !user) return;
     let cancelled = false;
 
-    async function startOutgoing(media: CallMedia) {
-      const { call: created, join } = await callsApi.create(token!, media);
+    async function startOutgoing(media: CallMedia, options: CallOptions) {
+      const { call: created, join } = await callsApi.create(media, options, token!);
       if (endedRef.current) {
         // The screen closed while the call was being created: stop the doctor's phone ringing.
-        void callsApi.end(token!, created.id).catch(() => {});
+        void callsApi.end(created.id, token!).catch(() => {});
         return;
       }
       callIdRef.current = created.id;
       activeCall.set(created.id);
       setCall(created);
+      setPhase(waitingPhase(created.state) ?? 'waiting');
 
-      // Shows the call on the lock screen and in the status bar, and plays a dial tone.
-      const sessionId = await CallKit.startOutgoingCall(
-        { id: created.doctor.id, displayName: created.doctor.name },
-        { hasVideo: wantsVideo },
-      );
+      // Shows the call on the lock screen and in the status bar, and plays a dial tone. The
+      // doctor isn't known yet (the queue picks one), so the system screen shows the service.
+      const sessionId = await CallKit.startOutgoingCall({ id: 'telehealth', displayName: t('call.systemName') }, { hasVideo: wantsVideo });
       if (endedRef.current) {
         void CallKit.endCall(sessionId).catch(() => {});
         return;
       }
       sessionIdRef.current = sessionId;
-      setPhase('ringing');
       await joinRoom(join.serverUrl, join.token);
     }
 
     async function answer(callId: string, sessionId: string, requestId: string) {
       activeCall.set(callId);
-      setPhase('connecting');
       try {
-        const { call: accepted, join } = await callsApi.accept(token!, callId);
+        const { call: accepted, join } = await callsApi.accept(callId, token!);
         setCall(accepted);
         if (cancelled || endedRef.current) return;
         await joinRoom(join.serverUrl, join.token);
@@ -197,16 +241,18 @@ export function useCall(request: CallRequest) {
             void CallKit.failIncomingCallConnected(request.sessionId, request.requestId).catch(() => {});
             sessionIdRef.current = null;
           }
-          finish(wantsVideo ? 'Lejoni mikrofonin dhe kamerën te cilësimet.' : 'Lejoni mikrofonin te cilësimet.');
+          finish('permissions');
           return;
         }
         if (request.kind === 'answer') {
           await answer(request.callId, request.sessionId, request.requestId);
         } else {
-          await startOutgoing(request.media);
+          await startOutgoing(request.media, { preferredDoctorId: request.preferredDoctorId, eventId: request.eventId });
         }
       } catch (error) {
-        if (!cancelled) finish(errorMessage(error), 'failed');
+        if (cancelled) return;
+        if (error instanceof ApiError && typeof error.details.until === 'string') setBlockedUntil(error.details.until);
+        finish(errorReason(error), 'failed');
       }
     }
 
@@ -218,19 +264,23 @@ export function useCall(request: CallRequest) {
   }, []);
 
   // Leaving the screen ends the call.
-  useEffect(() => () => finish('Thirrja përfundoi.'), [finish]);
+  useEffect(() => () => finish('ended'), [finish]);
 
-  /** Ends the call with the reason the API has (declined, not answered, …), or a generic one. */
+  /** Ends the call with the reason the API has (not answered, cancelled, …), or a generic one. */
   const finishFromServer = useCallback(async () => {
     const callId = callIdRef.current;
-    let state: CallState | null = null;
+    let latest: Call | null = null;
     if (callId && token) {
-      state = await callsApi.get(token, callId).then((latest) => latest.state, () => null);
+      latest = await callsApi.get(callId, token).catch(() => null);
     }
-    if (!state) {
-      finish('Thirrja përfundoi.', 'failed');
+    // A call still waiting on the server that the phone or the room dropped failed; one that was
+    // talking simply ended.
+    const fallback: EndReason = hadRemoteRef.current ? 'ended' : 'failed';
+    if (!latest) {
+      finish(fallback, 'failed');
     } else {
-      finish(END_MESSAGES[state] ?? 'Thirrja përfundoi.', SYSTEM_END_REASONS[state] ?? 'remoteEnded');
+      setCall(latest);
+      finish(END_REASONS[latest.state] ?? fallback, SYSTEM_END_REASONS[latest.state] ?? 'remoteEnded');
     }
   }, [finish, token]);
 
@@ -272,7 +322,7 @@ export function useCall(request: CallRequest) {
       CallKit.addCallEndedListener(({ id }) => {
         if (!isThisCall(id)) return;
         sessionIdRef.current = null; // Already closed.
-        finish('Thirrja përfundoi.');
+        finish('ended');
       }),
       // The phone closed the call itself, e.g. its ring or answer timeout ran out.
       CallKit.addReportedCallEndedListener(({ id }) => {
@@ -293,17 +343,21 @@ export function useCall(request: CallRequest) {
     return () => subscriptions.forEach((subscription) => subscription.remove());
   }, [room, finish, finishFromServer]);
 
-  // The API has the final word: declined, not answered, cancelled or ended by the other side.
+  // The API has the final word: waiting, ringing another doctor, answered, or over. Polling also
+  // keeps the server's queue moving (it has no background jobs).
   useEffect(() => {
     if (!token) return;
     const timer = setInterval(async () => {
       const callId = callIdRef.current;
       if (!callId || endedRef.current) return;
       try {
-        const latest = await callsApi.get(token, callId);
+        const latest = await callsApi.get(callId, token);
         setCall(latest);
-        if (latest.state !== 'RINGING' && latest.state !== 'ACCEPTED') {
-          finish(END_MESSAGES[latest.state] ?? 'Thirrja përfundoi.', SYSTEM_END_REASONS[latest.state] ?? 'remoteEnded');
+        const waiting = waitingPhase(latest.state);
+        if (!waiting) {
+          finish(END_REASONS[latest.state] ?? 'ended', SYSTEM_END_REASONS[latest.state] ?? 'remoteEnded');
+        } else if (!hadRemoteRef.current) {
+          setPhase((current) => (current === 'ended' || current === 'inCall' ? current : waiting));
         }
       } catch {
         // Keep the call going through short network hiccups.
@@ -325,7 +379,7 @@ export function useCall(request: CallRequest) {
   }, [room, wantsVideo]);
 
   const controls = {
-    hangUp: () => finish('Thirrja përfundoi.'),
+    hangUp: () => finish(hadRemoteRef.current ? 'ended' : 'canceled'),
     toggleMute: () => {
       const next = !muted;
       const sessionId = sessionIdRef.current;
@@ -355,14 +409,16 @@ export function useCall(request: CallRequest) {
     toggleSpeaker: () => CallKit.setAudioSessionPortOverride(!speakerOn),
   };
 
-  const otherParty = call ? (user?.role === 'DOCTOR' ? call.patient.name : call.doctor.name) : null;
-
+  const isDoctor = user?.role === 'DOCTOR';
   return {
     room,
     phase,
+    call,
     media: request.media,
-    otherParty,
-    endMessage,
+    /** The answering doctor of this call: may add another doctor. */
+    canAddDoctor: isDoctor && !!call && call.doctor?.id === user?.id,
+    endReason,
+    blockedUntil,
     connectedAt,
     muted,
     speakerOn,

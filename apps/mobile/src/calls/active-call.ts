@@ -7,3 +7,13 @@ export const activeCall = {
     activeCallId = callId;
   },
 };
+
+/** The ringing session the in-app invitation shows, so it isn't opened twice and answering replaces it. */
+let invitationSessionId: string | null = null;
+
+export const invitationScreen = {
+  get: () => invitationSessionId,
+  set: (sessionId: string | null) => {
+    invitationSessionId = sessionId;
+  },
+};

@@ -1,0 +1,6 @@
+{
+  "NSCameraUsageDescription": "Telehealth uses the camera for video calls, your profile photo and medical documents.",
+  "NSMicrophoneUsageDescription": "Telehealth uses the microphone for calls with your doctor.",
+  "NSPhotoLibraryUsageDescription": "Telehealth uses your photos for your profile photo and medical documents.",
+  "NSFaceIDUsageDescription": "Telehealth uses Face ID so you can log in without a password."
+}

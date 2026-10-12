@@ -13,7 +13,7 @@ export type FcmResult = { ok: true } | { ok: false; status: number; reason: stri
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 
-/** Sends data messages through the FCM HTTP v1 API. */
+/** Sends messages through the FCM HTTP v1 API. */
 export class FcmClient {
   private readonly key: KeyObject;
   private accessToken?: { value: string; expiresAt: number };
@@ -22,7 +22,27 @@ export class FcmClient {
     this.key = createPrivateKey(account.private_key);
   }
 
-  async sendData(deviceToken: string, data: Record<string, string>, ttlSeconds: number): Promise<FcmResult> {
+  /** A data-only message, e.g. an incoming call that expo-callkit-telecom shows itself. */
+  sendData(deviceToken: string, data: Record<string, string>, ttlSeconds: number): Promise<FcmResult> {
+    return this.send({ token: deviceToken, data, android: { priority: 'high', ttl: `${ttlSeconds}s` } });
+  }
+
+  /** A notification the system shows when the app is in the background. */
+  sendNotification(
+    deviceToken: string,
+    notification: { title: string; body: string },
+    data: Record<string, string>,
+    channelId: string,
+  ): Promise<FcmResult> {
+    return this.send({
+      token: deviceToken,
+      notification,
+      data,
+      android: { priority: 'high', notification: { channel_id: channelId } },
+    });
+  }
+
+  private async send(message: object): Promise<FcmResult> {
     const response = await fetch(
       `https://fcm.googleapis.com/v1/projects/${this.account.project_id}/messages:send`,
       {
@@ -31,13 +51,7 @@ export class FcmClient {
           authorization: `Bearer ${await this.getAccessToken()}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({
-          message: {
-            token: deviceToken,
-            data,
-            android: { priority: 'high', ttl: `${ttlSeconds}s` },
-          },
-        }),
+        body: JSON.stringify({ message }),
       },
     );
     if (response.ok) {

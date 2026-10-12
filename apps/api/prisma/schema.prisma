@@ -8,27 +8,112 @@ datasource db {
   provider = "postgresql"
 }
 
+// --- Users ---
+
+/// PATIENT (the app's "client") calls doctors; DOCTOR answers. Doctors are created by admins (the seed for now).
 enum Role {
   PATIENT
   DOCTOR
 }
 
-model User {
-  id           String   @id @default(uuid(7)) @db.Uuid
-  username     String   @unique
-  email        String   @unique
-  passwordHash String
-  firstName    String
-  lastName     String
-  role         Role     @default(PATIENT)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+enum Sex {
+  MALE
+  FEMALE
+}
 
-  devices       Device[]
-  patientCalls  Call[]   @relation("PatientCalls")
-  doctorCalls   Call[]   @relation("DoctorCalls")
+/// The app's languages. Used for push texts and server-made notifications.
+enum Language {
+  SQ
+  EN
+  MK
+}
+
+model User {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  email           String    @unique
+  passwordHash    String
+  firstName       String
+  lastName        String
+  role            Role      @default(PATIENT)
+  phone           String?
+  /// National ID number. Required when a patient signs up.
+  personalId      String?   @unique
+  sex             Sex?
+  /// File name in the avatars upload folder.
+  avatarFile      String?
+  language        Language  @default(SQ)
+  /// Patients must confirm their email before they can log in.
+  emailVerifiedAt DateTime?
+  /// Doctors: the last time the open app checked for calls. A doctor without a push device is
+  /// only rung while this is recent.
+  lastSeenAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  doctorProfile      DoctorProfile?
+  devices            Device[]
+  authTokens         AuthToken[]
+  subscriptions      Subscription[]
+  claims             Claim[]
+  notifications      Notification[]
+  patientCalls       Call[]             @relation("PatientCalls")
+  doctorCalls        Call[]             @relation("DoctorCalls")
+  preferredCalls     Call[]             @relation("PreferredDoctorCalls")
+  callAttempts       CallAttempt[]
+  callInvites        CallInvite[]       @relation("InvitedDoctor")
+  sentCallInvites    CallInvite[]       @relation("InvitingDoctor")
+  patientFolders     MedicalFolder[]    @relation("PatientFolders")
+  doctorFolders      MedicalFolder[]    @relation("DoctorFolders")
+  folderComments     FolderComment[]
+  folderDocuments    FolderDocument[]
+  hostedEvents       Event[]
+  eventParticipation EventParticipant[]
+  blocks             PatientBlock[]     @relation("BlockedPatient")
+  issuedBlocks       PatientBlock[]     @relation("BlockingDoctor")
 
   @@map("users")
+}
+
+/// What a patient sees about a doctor, and what the doctor edits on their profile.
+model DoctorProfile {
+  userId        String  @id @db.Uuid
+  specialty     String?
+  bio           String?
+  licenceNumber String?
+  country       String?
+  city          String?
+  healthCentre  String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("doctor_profiles")
+}
+
+enum AuthTokenKind {
+  /// A link in the sign-up email.
+  EMAIL_VERIFICATION
+  /// A 6-digit code emailed for "forgot password".
+  PASSWORD_RESET
+  /// A long-lived secret one phone keeps behind Face ID / fingerprint.
+  BIOMETRIC
+}
+
+/// One-time codes and biometric login keys. Only a SHA-256 hash is stored.
+model AuthToken {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  userId    String        @db.Uuid
+  kind      AuthTokenKind
+  tokenHash String
+  attempts  Int           @default(0)
+  expiresAt DateTime?
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([userId, kind])
+  @@map("auth_tokens")
 }
 
 enum DevicePlatform {
@@ -36,13 +121,15 @@ enum DevicePlatform {
   ANDROID
 }
 
-/// VOIP: an APNs PushKit token (iOS). FCM: a Firebase Cloud Messaging token (Android).
+/// VOIP: an APNs PushKit token (iOS calls). APNS: a regular APNs token (iOS notifications).
+/// FCM: a Firebase token (Android calls and notifications).
 enum PushKind {
   VOIP
+  APNS
   FCM
 }
 
-/// A phone that can ring for incoming calls.
+/// A phone that can ring for incoming calls or receive notifications.
 model Device {
   id        String         @id @default(uuid(7)) @db.Uuid
   userId    String         @db.Uuid
@@ -58,15 +145,314 @@ model Device {
   @@map("devices")
 }
 
+// --- Subscriptions and insurance ---
+
+enum SubscriptionSource {
+  INSURANCE
+  PREPAID
+  DEMO
+}
+
+/// A patient's right to use calls, events and comments between `startsAt` and `endsAt`.
+model Subscription {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  userId        String             @db.Uuid
+  source        SubscriptionSource
+  planName      String
+  /// The number printed on the digital health card.
+  cardNumber    String
+  policyId      String?            @unique @db.Uuid
+  prepaidCardId String?            @unique @db.Uuid
+  startsAt      DateTime
+  endsAt        DateTime
+  createdAt     DateTime           @default(now())
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  policy      InsurancePolicy? @relation(fields: [policyId], references: [id])
+  prepaidCard PrepaidCard?     @relation(fields: [prepaidCardId], references: [id])
+
+  @@index([userId, endsAt])
+  @@map("subscriptions")
+}
+
+enum PolicyType {
+  HEALTH
+  FAMILY
+  CORPORATE
+  TRAVEL
+}
+
+/// Policies the insurer issued (entered by the insurer; seeded for the demo). A patient activates
+/// one with its type and card number.
+model InsurancePolicy {
+  id         String     @id @default(uuid(7)) @db.Uuid
+  type       PolicyType
+  cardNumber String
+  planName   String
+  validFrom  DateTime
+  validTo    DateTime
+
+  subscription Subscription?
+
+  @@unique([type, cardNumber])
+  @@map("insurance_policies")
+}
+
+model PrepaidCard {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  code         String    @unique
+  planName     String
+  durationDays Int
+  redeemedAt   DateTime?
+
+  subscription Subscription?
+
+  @@map("prepaid_cards")
+}
+
+enum ClaimStatus {
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  PAID
+}
+
+/// An insurance claim. They come from the insurer; patients only see them.
+model Claim {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  userId      String      @db.Uuid
+  number      String      @unique
+  title       String
+  provider    String?
+  amount      Decimal     @db.Decimal(18, 2)
+  currency    String      @default("ALL")
+  status      ClaimStatus @default(SUBMITTED)
+  submittedAt DateTime
+  updatedAt   DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, submittedAt])
+  @@map("claims")
+}
+
+// --- Content (texts are {"sq","en","mk"} objects) ---
+
+model Story {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  title       Json
+  body        Json
+  icon        String
+  color       String
+  imageUrl    String?
+  position    Int      @default(0)
+  publishedAt DateTime @default(now())
+
+  @@map("stories")
+}
+
+/// A "My benefits" promotion.
+model Benefit {
+  id       String  @id @default(uuid(7)) @db.Uuid
+  title    Json
+  subtitle Json
+  body     Json
+  icon     String
+  color    String
+  imageUrl String?
+  /// An optional page with more about the offer.
+  url      String?
+  position Int     @default(0)
+
+  @@map("benefits")
+}
+
+model Article {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  title       Json
+  summary     Json
+  body        Json
+  icon        String
+  color       String
+  imageUrl    String?
+  readMinutes Int      @default(3)
+  publishedAt DateTime @default(now())
+
+  @@map("articles")
+}
+
+// --- Events ("Activities") ---
+
+/// A scheduled session with a specialist and a limited number of seats.
+model Event {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  title        Json
+  description  Json
+  specialistId String   @db.Uuid
+  startsAt     DateTime
+  endsAt       DateTime
+  capacity     Int
+  createdAt    DateTime @default(now())
+
+  specialist   User               @relation(fields: [specialistId], references: [id])
+  participants EventParticipant[]
+  calls        Call[]
+
+  @@index([startsAt])
+  @@map("events")
+}
+
+model EventParticipant {
+  eventId  String   @db.Uuid
+  userId   String   @db.Uuid
+  joinedAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+  @@index([userId])
+  @@map("event_participants")
+}
+
+// --- Notifications ---
+
+enum NotificationType {
+  FOLDER_CREATED
+  FOLDER_COMMENT
+  FOLDER_DOCUMENT
+  FREE_LINE
+  SUBSCRIPTION_ACTIVATED
+  EVENT_JOINED
+  ANNOUNCEMENT
+}
+
+/// What the app opens when the notification is tapped: a folder, an event, a link, or "Call now"
+/// (FREE_LINE). `params` fills the text templates; ANNOUNCEMENT carries its own localized texts.
+model Notification {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  userId    String           @db.Uuid
+  type      NotificationType
+  params    Json             @default("{}")
+  title     Json?
+  body      Json?
+  folderId  String?          @db.Uuid
+  eventId   String?          @db.Uuid
+  doctorId  String?          @db.Uuid
+  url       String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// --- Medical folders ---
+
+enum ConcernCategory {
+  GENERAL
+  CARDIOLOGY
+  RESPIRATORY
+  DERMATOLOGY
+  GASTROENTEROLOGY
+  NEUROLOGY
+  PEDIATRICS
+  MENTAL_HEALTH
+  ORTHOPEDICS
+  OTHER
+}
+
+/// A visit record a doctor writes for a patient.
+model MedicalFolder {
+  id              String          @id @default(uuid(7)) @db.Uuid
+  patientId       String          @db.Uuid
+  doctorId        String          @db.Uuid
+  visitDate       DateTime
+  symptoms        String
+  diagnosis       String
+  prescription    String?
+  recommendations String?
+  /// Doctors' notes; patients don't see them.
+  medicalComments String?
+  concernCategory ConcernCategory @default(GENERAL)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  patient   User             @relation("PatientFolders", fields: [patientId], references: [id])
+  doctor    User             @relation("DoctorFolders", fields: [doctorId], references: [id])
+  comments  FolderComment[]
+  documents FolderDocument[]
+
+  @@index([patientId, visitDate])
+  @@index([doctorId])
+  @@map("medical_folders")
+}
+
+model FolderComment {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  folderId  String   @db.Uuid
+  authorId  String   @db.Uuid
+  body      String
+  createdAt DateTime @default(now())
+
+  folder MedicalFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  author User          @relation(fields: [authorId], references: [id])
+
+  @@index([folderId, createdAt])
+  @@map("folder_comments")
+}
+
+model FolderDocument {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  folderId     String   @db.Uuid
+  uploadedById String   @db.Uuid
+  fileName     String
+  mimeType     String
+  size         Int
+  /// File name in the documents upload folder.
+  storageKey   String   @unique
+  createdAt    DateTime @default(now())
+
+  folder     MedicalFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  uploadedBy User          @relation(fields: [uploadedById], references: [id])
+
+  @@index([folderId, createdAt])
+  @@map("folder_documents")
+}
+
+/// A doctor stops a patient from calling until `endsAt`.
+model PatientBlock {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  patientId String    @db.Uuid
+  doctorId  String    @db.Uuid
+  reason    String
+  endsAt    DateTime
+  liftedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  patient User @relation("BlockedPatient", fields: [patientId], references: [id], onDelete: Cascade)
+  doctor  User @relation("BlockingDoctor", fields: [doctorId], references: [id])
+
+  @@index([patientId, endsAt])
+  @@map("patient_blocks")
+}
+
+// --- Calls ---
+
 enum CallMedia {
   AUDIO
   VIDEO
 }
 
-/// RINGING → ACCEPTED → ENDED
-/// RINGING → DECLINED | CANCELED | UNANSWERED
-/// any     → FAILED
+/// QUEUED → RINGING → ACCEPTED → ENDED
+/// RINGING → QUEUED (the doctor didn't answer or declined: the next free doctor is tried)
+/// QUEUED | RINGING → CANCELED (the patient hung up) | UNANSWERED (no doctor reached in time)
+/// any → FAILED. DECLINED is only on calls from before the queue existed.
 enum CallState {
+  QUEUED
   RINGING
   ACCEPTED
   ENDED
@@ -76,25 +462,105 @@ enum CallState {
   FAILED
 }
 
-/// A patient's call to a doctor. The media runs in the LiveKit room "call-<id>": the patient gets
-/// a token for it when the call is created, the doctor only when they accept.
+/// A patient's call. The media runs in the LiveKit room "call-<id>": the patient gets a token for
+/// it when the call is created and waits there, a doctor only when they accept.
 model Call {
-  id         String    @id @default(uuid(7)) @db.Uuid
-  patientId  String    @db.Uuid
-  doctorId   String    @db.Uuid
-  media      CallMedia
-  state      CallState @default(RINGING)
-  createdAt  DateTime  @default(now())
-  answeredAt DateTime?
-  endedAt    DateTime?
-  updatedAt  DateTime  @updatedAt
+  id                String    @id @default(uuid(7)) @db.Uuid
+  patientId         String    @db.Uuid
+  /// The doctor being rung now, or who answered. Null while queued.
+  doctorId          String?   @db.Uuid
+  /// Tried first when free: the doctor who offered a free line, or an event's specialist.
+  preferredDoctorId String?   @db.Uuid
+  eventId           String?   @db.Uuid
+  media             CallMedia
+  state             CallState @default(QUEUED)
+  createdAt         DateTime  @default(now())
+  /// When the current doctor's phone started ringing.
+  ringingAt         DateTime?
+  answeredAt        DateTime?
+  endedAt           DateTime?
+  updatedAt         DateTime  @updatedAt
 
-  patient User @relation("PatientCalls", fields: [patientId], references: [id])
-  doctor  User @relation("DoctorCalls", fields: [doctorId], references: [id])
+  patient         User          @relation("PatientCalls", fields: [patientId], references: [id])
+  doctor          User?         @relation("DoctorCalls", fields: [doctorId], references: [id])
+  preferredDoctor User?         @relation("PreferredDoctorCalls", fields: [preferredDoctorId], references: [id])
+  event           Event?        @relation(fields: [eventId], references: [id])
+  attempts        CallAttempt[]
+  invites         CallInvite[]
+  feedback        CallFeedback?
 
-  // The migration also adds partial unique indexes: one active (RINGING/ACCEPTED) call
-  // per patient and one per doctor.
+  // The migrations also add partial unique indexes: one active (QUEUED/RINGING/ACCEPTED) call per
+  // patient and one active (RINGING/ACCEPTED) call per doctor.
   @@index([patientId, createdAt])
   @@index([doctorId, createdAt])
+  @@index([state, createdAt])
   @@map("calls")
+}
+
+enum AttemptOutcome {
+  RINGING
+  ACCEPTED
+  DECLINED
+  NO_ANSWER
+  CANCELED
+  FAILED
+}
+
+/// One doctor's phone ringing for a call. Its id is the push's eventId.
+model CallAttempt {
+  id        String         @id @default(uuid(7)) @db.Uuid
+  callId    String         @db.Uuid
+  doctorId  String         @db.Uuid
+  outcome   AttemptOutcome @default(RINGING)
+  startedAt DateTime       @default(now())
+  endedAt   DateTime?
+
+  call   Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+  doctor User @relation(fields: [doctorId], references: [id])
+
+  @@index([callId])
+  @@index([doctorId, startedAt])
+  @@map("call_attempts")
+}
+
+enum InviteState {
+  RINGING
+  ACCEPTED
+  DECLINED
+  NO_ANSWER
+  LEFT
+  CANCELED
+}
+
+/// "Add doctor": another doctor rung into an answered call. Its id is the push's eventId.
+model CallInvite {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  callId      String      @db.Uuid
+  doctorId    String      @db.Uuid
+  invitedById String      @db.Uuid
+  state       InviteState @default(RINGING)
+  createdAt   DateTime    @default(now())
+  answeredAt  DateTime?
+  endedAt     DateTime?
+
+  call      Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+  doctor    User @relation("InvitedDoctor", fields: [doctorId], references: [id])
+  invitedBy User @relation("InvitingDoctor", fields: [invitedById], references: [id])
+
+  // The migration also adds a partial unique index: one active (RINGING/ACCEPTED) invite per doctor.
+  @@index([callId])
+  @@index([doctorId, createdAt])
+  @@map("call_invites")
+}
+
+/// The patient's rating after a call.
+model CallFeedback {
+  callId    String   @id @db.Uuid
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@map("call_feedback")
 }

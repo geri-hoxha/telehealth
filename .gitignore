@@ -14,6 +14,9 @@ expo-env.d.ts
 apps/api/src/generated/
 *.tsbuildinfo
 
+# Files uploaded to the API in development
+apps/api/uploads/
+
 # Push credentials for the API
 apps/api/secrets/
 *.p8

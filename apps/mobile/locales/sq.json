@@ -1,0 +1,6 @@
+{
+  "NSCameraUsageDescription": "Telehealth përdor kamerën për videothirrjet, foton e profilit dhe dokumentet mjekësore.",
+  "NSMicrophoneUsageDescription": "Telehealth përdor mikrofonin për thirrjet me mjekun.",
+  "NSPhotoLibraryUsageDescription": "Telehealth përdor fotot tuaja për foton e profilit dhe për dokumentet mjekësore.",
+  "NSFaceIDUsageDescription": "Telehealth përdor Face ID që të hyni pa fjalëkalim."
+}
