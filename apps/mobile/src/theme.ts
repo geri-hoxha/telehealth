@@ -46,9 +46,22 @@ export function accent(name: string): readonly [string, string] {
   return accents[name as AccentName] ?? accents.teal;
 }
 
+/** `hex` mixed into white, `amount` being its share (0.12 is a pale tint). Opaque, so shadows stay clean. */
+function tint(hex: string, amount: number): string {
+  const channel = (offset: number) => Math.round(255 - (255 - parseInt(hex.slice(offset, offset + 2), 16)) * amount);
+  return `#${[1, 3, 5].map((offset) => channel(offset).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** A content accent as a solid colour and a pale tint of it, for icons, rings and card backgrounds. */
+export function accentTone(name: string): { color: string; soft: string } {
+  const color = accent(name)[1];
+  return { color, soft: tint(color, 0.12) };
+}
+
 export const gradients = {
   brand: ['#14B8A6', '#0D9488', '#115E59'],
-  card: ['#2DD4BF', '#0D9488', '#134E4A'],
+  /** The health card: brushed gold, light and dark bands (stops in `HealthCard`). */
+  card: ['#F4E3AB', '#E3C373', '#CB9F44', '#E7CD86', '#BC8F3A'],
   call: ['#0F2A3A', '#0B1220'],
 } as const;
 

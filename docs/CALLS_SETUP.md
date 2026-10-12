@@ -103,7 +103,7 @@ You need **two phones**:
 
 1. On phone A, log in as **doktor@telehealth.al / 1234** and allow the microphone, camera and notifications.
    - If this phone was already logged in with an older build, log out and in once. The app now saves the login so it can be read on the lock screen, which a doctor needs to answer there.
-2. On phone B, log in as **geri@telehealth.al / 1234** (it has an active subscription), then tap the **Thirr** tab and the big button.
+2. On phone B, log in as **patient@telehealth.al / 1234** (it has an active subscription), then tap the **Thirr** tab and the big button.
 3. Phone A rings. Answer it, and you're in the call.
 4. Try it with phone A's app closed and the screen locked. This only works once the APNs/FCM keys above are set.
 
@@ -126,9 +126,25 @@ You can build on your Mac with a free Apple ID. The doctor's iPhone then rings o
 4. The first time, iOS won't open the app: go to **Settings → General → VPN & Device Management**, tap your Apple ID and **Trust**.
 5. Apps signed with a free Apple ID stop opening after 7 days. Run the command again to reinstall.
 
+If your Apple ID is a member of SIGAL's team, sign with that team instead. The app then doesn't expire after 7 days:
+
+```sh
+cd apps/mobile
+SIGAL_TEAM=1 npx expo prebuild --platform ios --clean   # only when switching from FREE_APPLE_ID
+SIGAL_TEAM=1 npx expo run:ios --device
+```
+
+- It uses the bundle ID `al.telehealth.app.sigal`, for the same reason as above.
+- It has push, so a locked phone rings too. The API needs an APNs key from SIGAL's team (step 2 above, created by one of the team's Admins) with `APNS_TEAM_ID=UJM594GCMV`, `APNS_BUNDLE_ID=al.telehealth.app.sigal` and `APNS_PRODUCTION=false`.
+- The first time, and for each new iPhone, `expo run:ios` fails with "No profiles for 'al.telehealth.app.sigal' were found". Expo only lets Xcode create signing profiles when it picks the team itself, and here the team is set in `app.config.ts`. Build once with Xcode allowed to create them (replace the UDID with yours from `xcrun devicectl list devices`), then use `expo run:ios` again:
+  ```sh
+  xcodebuild -workspace ios/Telehealth.xcworkspace -scheme Telehealth -configuration Debug \
+    -destination id=<iPhone UDID> -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+  ```
+
 With only one iPhone, call it as the patient from the Mac:
 
-1. Open `http://localhost:3000/api/docs`, call `POST /api/auth/login` with `{"email":"geri@telehealth.al","password":"1234"}`, and paste the `accessToken` under **Authorize**. (Or run `node apps/api/scripts/test-call.mjs`, which does steps 1–3.)
+1. Open `http://localhost:3000/api/docs`, call `POST /api/auth/login` with `{"email":"patient@telehealth.al","password":"1234"}`, and paste the `accessToken` under **Authorize**. (Or run `node apps/api/scripts/test-call.mjs`, which does steps 1–3.)
 2. Call `POST /api/calls` with `{"media":"VIDEO"}`.
 3. Open <https://meet.livekit.io>, choose **Custom**, and paste `join.serverUrl` and `join.token` from the response. The browser is now the patient.
 4. The iPhone, open on the doctor's account, rings within a few seconds. Answer it.

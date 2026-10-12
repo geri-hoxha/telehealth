@@ -78,6 +78,7 @@ function RootNavigator() {
           <Stack.Screen name="stories" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
           <Stack.Screen name="subscription" />
           <Stack.Screen name="health-card" />
+          <Stack.Screen name="lab-results" />
           <Stack.Screen name="events/[id]" />
           <Stack.Screen name="benefits/[id]" />
           <Stack.Screen name="articles/[id]" />

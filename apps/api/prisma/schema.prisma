@@ -55,6 +55,7 @@ model User {
   authTokens         AuthToken[]
   subscriptions      Subscription[]
   claims             Claim[]
+  labReports         LabReport[]
   notifications      Notification[]
   patientCalls       Call[]             @relation("PatientCalls")
   doctorCalls        Call[]             @relation("DoctorCalls")
@@ -235,6 +236,56 @@ model Claim {
 
   @@index([userId, submittedAt])
   @@map("claims")
+}
+
+// --- Lab results ---
+
+enum LabReportType {
+  BLOOD
+  URINE
+}
+
+/// A blood or urine test. Reports come from the labs; patients only see them.
+model LabReport {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  patientId String        @db.Uuid
+  type      LabReportType
+  /// When the sample was taken.
+  takenAt   DateTime
+  /// The laboratory that made the report.
+  lab       String
+  createdAt DateTime      @default(now())
+
+  patient User        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  results LabResult[]
+
+  @@index([patientId, type, takenAt])
+  @@map("lab_reports")
+}
+
+/// One measurement on a report, with the reference ranges the lab printed next to it.
+model LabResult {
+  id       String @id @default(uuid(7)) @db.Uuid
+  reportId String @db.Uuid
+  /// The order on the report.
+  position Int
+  /// {"sq","en","mk"}
+  name     Json
+  /// Empty when the value has no unit (pH).
+  unit     String
+  value    Float
+  /// The ends of the scale drawn under the value.
+  scaleMin Float
+  scaleMax Float
+  /// In order. Each range runs up to `to`, where the next one starts (null: no end), e.g.
+  /// [{"to":200,"status":"NORMAL"},{"to":240,"status":"BORDERLINE"},{"to":null,"status":"HIGH"}].
+  /// Status is LOW, NORMAL, BORDERLINE or HIGH.
+  ranges   Json
+
+  report LabReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, position])
+  @@map("lab_results")
 }
 
 // --- Content (texts are {"sq","en","mk"} objects) ---

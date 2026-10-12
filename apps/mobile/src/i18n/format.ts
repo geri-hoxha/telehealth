@@ -56,6 +56,12 @@ export function formatNumericDate(value: Date | string): string {
   return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`;
 }
 
+/** 5.4 in English, 5,4 in Albanian and Macedonian; no trailing zeros. */
+export function formatNumber(value: number, language: Language): string {
+  const text = String(Number(value.toFixed(3)));
+  return language === 'en' ? text : text.replace('.', ',');
+}
+
 /** 12/27, as on a bank card. */
 export function formatCardExpiry(value: Date | string): string {
   const date = toDate(value);

@@ -7,6 +7,7 @@ import {
   doctorsApi,
   eventsApi,
   foldersApi,
+  labReportsApi,
   notificationsApi,
   patientsApi,
   subscriptionApi,
@@ -19,6 +20,7 @@ import {
 export const queryKeys = {
   subscription: ['subscription'] as const,
   claims: ['claims'] as const,
+  labReports: (language: string) => ['lab-reports', language] as const,
   stories: (language: string) => ['stories', language] as const,
   benefits: (language: string) => ['benefits', language] as const,
   benefit: (id: string, language: string) => ['benefits', language, id] as const,
@@ -52,6 +54,12 @@ export function useSubscription(enabled = true) {
 
 export function useClaims() {
   return useQuery({ queryKey: queryKeys.claims, queryFn: subscriptionApi.claims });
+}
+
+/** Result names come in the app's language. */
+export function useLabReports() {
+  const { language } = useI18n();
+  return useQuery({ queryKey: queryKeys.labReports(language), queryFn: labReportsApi.latest });
 }
 
 export function useStories() {

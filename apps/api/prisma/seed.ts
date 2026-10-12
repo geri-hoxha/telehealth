@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { hash } from '@node-rs/argon2';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, type Prisma } from '../src/generated/prisma/client';
+import { seedLabReports } from './lab-reports.seed';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env['DATABASE_URL'] }),
@@ -24,8 +25,8 @@ const t = (sq: string, en: string, mk: string) => ({ sq, en, mk });
 type DemoUser = Omit<Prisma.UserCreateInput, 'passwordHash'> & { profile?: Prisma.DoctorProfileCreateWithoutUserInput };
 
 const USERS: Record<string, DemoUser> = {
-  geri: {
-    email: 'geri@telehealth.al', firstName: 'Geri', lastName: 'Demo', role: 'PATIENT',
+  patient: {
+    email: 'patient@telehealth.al', firstName: 'Patient', lastName: 'Demo', role: 'PATIENT',
     phone: '+355691234567', personalId: 'J90101001A', sex: 'MALE',
   },
   arta: {
@@ -101,6 +102,7 @@ async function reset() {
   await prisma.benefit.deleteMany();
   await prisma.article.deleteMany();
   await prisma.claim.deleteMany();
+  await prisma.labReport.deleteMany();
   await prisma.subscription.deleteMany();
   await prisma.prepaidCard.deleteMany();
   await prisma.insurancePolicy.deleteMany();
@@ -112,7 +114,7 @@ async function seedInsurance(u: Record<string, string>) {
   // Policy dates are whole days in Albanian time (UTC+1 in winter).
   const validFrom = new Date('2026-01-01T00:00:00+01:00');
   const validTo = new Date('2027-12-31T23:59:59+01:00');
-  const geriPolicy = await prisma.insurancePolicy.create({
+  const patientPolicy = await prisma.insurancePolicy.create({
     data: { type: 'HEALTH', cardNumber: '4021883011230042', planName: 'Premium', validFrom, validTo },
   });
   // Free to activate from the app ("My registration").
@@ -139,8 +141,8 @@ async function seedInsurance(u: Record<string, string>) {
 
   await prisma.subscription.create({
     data: {
-      userId: u.geri, source: 'INSURANCE', planName: 'Premium', cardNumber: geriPolicy.cardNumber,
-      policyId: geriPolicy.id, startsAt: validFrom, endsAt: validTo, createdAt: new Date('2026-01-05T09:00:00Z'),
+      userId: u.patient, source: 'INSURANCE', planName: 'Premium', cardNumber: patientPolicy.cardNumber,
+      policyId: patientPolicy.id, startsAt: validFrom, endsAt: validTo, createdAt: new Date('2026-01-05T09:00:00Z'),
     },
   });
   await prisma.subscription.create({
@@ -153,11 +155,11 @@ async function seedInsurance(u: Record<string, string>) {
 
   await prisma.claim.createMany({
     data: [
-      { userId: u.geri, number: 'DM-2026-00247', title: 'Barna me recetë', provider: 'Farmacia 10', amount: '2300', status: 'SUBMITTED', submittedAt: at(-1 * DAY) },
-      { userId: u.geri, number: 'DM-2026-00239', title: 'Ekografi abdominale', provider: 'Spitali Hygeia', amount: '7500', status: 'IN_REVIEW', submittedAt: at(-6 * DAY) },
-      { userId: u.geri, number: 'DM-2026-00211', title: 'Vizitë te kardiologu', provider: 'Spitali Amerikan', amount: '6000', status: 'APPROVED', submittedAt: at(-20 * DAY) },
-      { userId: u.geri, number: 'DM-2026-00184', title: 'Analiza gjaku', provider: 'Laboratori Intermedica', amount: '4500', status: 'PAID', submittedAt: at(-40 * DAY) },
-      { userId: u.geri, number: 'DM-2026-00102', title: 'Fizioterapi (10 seanca)', provider: 'Qendra Fizio Plus', amount: '12000', status: 'REJECTED', submittedAt: at(-70 * DAY) },
+      { userId: u.patient, number: 'DM-2026-00247', title: 'Barna me recetë', provider: 'Farmacia 10', amount: '2300', status: 'SUBMITTED', submittedAt: at(-1 * DAY) },
+      { userId: u.patient, number: 'DM-2026-00239', title: 'Ekografi abdominale', provider: 'Spitali Hygeia', amount: '7500', status: 'IN_REVIEW', submittedAt: at(-6 * DAY) },
+      { userId: u.patient, number: 'DM-2026-00211', title: 'Vizitë te kardiologu', provider: 'Spitali Amerikan', amount: '6000', status: 'APPROVED', submittedAt: at(-20 * DAY) },
+      { userId: u.patient, number: 'DM-2026-00184', title: 'Analiza gjaku', provider: 'Laboratori Intermedica', amount: '4500', status: 'PAID', submittedAt: at(-40 * DAY) },
+      { userId: u.patient, number: 'DM-2026-00102', title: 'Fizioterapi (10 seanca)', provider: 'Qendra Fizio Plus', amount: '12000', status: 'REJECTED', submittedAt: at(-70 * DAY) },
     ],
   });
 }
@@ -329,7 +331,7 @@ async function seedEvents(u: Record<string, string>) {
         'Д-р Арбен Мјеку одговара на прашања за грип, настинка и вакцини. Учесниците можат да побараат повик за време на сесијата.',
       ),
     },
-    [u.geri, u.elton],
+    [u.patient, u.elton],
   );
   await event(
     {
@@ -377,7 +379,7 @@ async function seedEvents(u: Record<string, string>) {
         'Како да изградите здрави навики за исхрана уште од првите години.',
       ),
     },
-    [u.geri, u.arta],
+    [u.patient, u.arta],
   );
   await event(
     {
@@ -389,7 +391,7 @@ async function seedEvents(u: Record<string, string>) {
         'Заштита од сонце, креми со SPF и преглед на бенки.',
       ),
     },
-    [u.geri],
+    [u.patient],
   );
   return { live };
 }
@@ -397,7 +399,7 @@ async function seedEvents(u: Record<string, string>) {
 async function seedFolders(u: Record<string, string>) {
   const cold = await prisma.medicalFolder.create({
     data: {
-      patientId: u.geri, doctorId: u.arben, visitDate: at(-45 * DAY), concernCategory: 'RESPIRATORY',
+      patientId: u.patient, doctorId: u.arben, visitDate: at(-45 * DAY), concernCategory: 'RESPIRATORY',
       symptoms: 'Kollë e thatë, temperaturë 38.2 °C dhe lodhje prej 3 ditësh.',
       diagnosis: 'Infeksion viral i rrugëve të sipërme të frymëmarrjes.',
       prescription: 'Paracetamol 500 mg: 1 tabletë çdo 8 orë, për 3 ditë.\nShurup për kollën: 10 ml, 3 herë në ditë.',
@@ -406,7 +408,7 @@ async function seedFolders(u: Record<string, string>) {
       createdAt: at(-45 * DAY),
       comments: {
         create: [
-          { authorId: u.geri, body: 'Faleminderit, doktor! Sot jam shumë më mirë.', createdAt: at(-44 * DAY) },
+          { authorId: u.patient, body: 'Faleminderit, doktor! Sot jam shumë më mirë.', createdAt: at(-44 * DAY) },
           { authorId: u.arben, body: 'Më vjen mirë! Vazhdoni me lëngje edhe dy ditë.', createdAt: at(-44 * DAY + 2 * HOUR) },
         ],
       },
@@ -414,7 +416,7 @@ async function seedFolders(u: Record<string, string>) {
   });
   await prisma.medicalFolder.create({
     data: {
-      patientId: u.geri, doctorId: u.arben, visitDate: at(-12 * DAY), concernCategory: 'NEUROLOGY',
+      patientId: u.patient, doctorId: u.arben, visitDate: at(-12 * DAY), concernCategory: 'NEUROLOGY',
       symptoms: 'Dhimbje koke e shpeshtë, sidomos në mbrëmje, pas punës para kompjuterit.',
       diagnosis: 'Dhimbje koke nga tensioni.',
       prescription: 'Ibuprofen 400 mg kur nevojitet (jo më shumë se 3 në ditë).',
@@ -425,7 +427,7 @@ async function seedFolders(u: Record<string, string>) {
   });
   const rash = await prisma.medicalFolder.create({
     data: {
-      patientId: u.geri, doctorId: u.elena, visitDate: at(-2 * DAY), concernCategory: 'DERMATOLOGY',
+      patientId: u.patient, doctorId: u.elena, visitDate: at(-2 * DAY), concernCategory: 'DERMATOLOGY',
       symptoms: 'Skuqje me kruajtje në krahun e majtë prej një jave.',
       diagnosis: 'Dermatit kontakti.',
       prescription: 'Krem hidrokortizon 1%: dy herë në ditë për 7 ditë.\nLoratadinë 10 mg: 1 tabletë në mbrëmje.',
@@ -458,17 +460,17 @@ async function seedCalls(u: Record<string, string>) {
       },
     });
 
-  await ended(u.geri, u.arben, -45 * DAY - 2 * HOUR, 9, { feedback: { create: { rating: 5, comment: 'Shumë i sjellshëm dhe i qartë.' } } });
-  await ended(u.geri, u.arben, -12 * DAY - 3 * HOUR, 6);
+  await ended(u.patient, u.arben, -45 * DAY - 2 * HOUR, 9, { feedback: { create: { rating: 5, comment: 'Shumë i sjellshëm dhe i qartë.' } } });
+  await ended(u.patient, u.arben, -12 * DAY - 3 * HOUR, 6);
   // Nobody answered: Drita was rung, then the lines were busy.
   await prisma.call.create({
     data: {
-      patientId: u.geri, media: 'VIDEO', state: 'UNANSWERED', createdAt: at(-5 * DAY), endedAt: at(-5 * DAY + 50_000),
+      patientId: u.patient, media: 'VIDEO', state: 'UNANSWERED', createdAt: at(-5 * DAY), endedAt: at(-5 * DAY + 50_000),
       attempts: { create: { doctorId: u.drita, outcome: 'NO_ANSWER', startedAt: at(-5 * DAY + 2000), endedAt: at(-5 * DAY + 47_000) } },
     },
   });
   // Elena added Besnik to the call.
-  await ended(u.geri, u.elena, -2 * DAY - 4 * HOUR, 12, {
+  await ended(u.patient, u.elena, -2 * DAY - 4 * HOUR, 12, {
     invites: {
       create: {
         doctorId: u.besnik, invitedById: u.elena, state: 'LEFT',
@@ -496,17 +498,17 @@ async function seedNotifications(u: Record<string, string>, ids: { liveEventId: 
   const startOfYear = new Date('2026-01-05T09:00:00Z');
   await prisma.notification.createMany({
     data: [
-      { userId: u.geri, type: 'FREE_LINE', params: { doctor: 'Arben Mjeku' }, doctorId: u.arben, createdAt: at(-20 * MINUTE) },
-      { userId: u.geri, type: 'EVENT_JOINED', params: { event: t('Konsultë e hapur: gripi dhe ftohja', 'Open consultation: flu and colds', 'Отворена консултација: грип и настинка'), date: formatDate(at(-30 * MINUTE)) }, eventId: ids.liveEventId, createdAt: at(-3 * HOUR) },
-      { userId: u.geri, type: 'FOLDER_CREATED', params: { doctor: 'Elena Stojanovska' }, folderId: ids.rashFolderId, createdAt: at(-2 * DAY) },
+      { userId: u.patient, type: 'FREE_LINE', params: { doctor: 'Arben Mjeku' }, doctorId: u.arben, createdAt: at(-20 * MINUTE) },
+      { userId: u.patient, type: 'EVENT_JOINED', params: { event: t('Konsultë e hapur: gripi dhe ftohja', 'Open consultation: flu and colds', 'Отворена консултација: грип и настинка'), date: formatDate(at(-30 * MINUTE)) }, eventId: ids.liveEventId, createdAt: at(-3 * HOUR) },
+      { userId: u.patient, type: 'FOLDER_CREATED', params: { doctor: 'Elena Stojanovska' }, folderId: ids.rashFolderId, createdAt: at(-2 * DAY) },
       {
-        userId: u.geri, type: 'ANNOUNCEMENT', url: 'https://www.who.int/news-room/fact-sheets/detail/influenza-(seasonal)', createdAt: at(-4 * DAY), readAt: at(-3 * DAY),
+        userId: u.patient, type: 'ANNOUNCEMENT', url: 'https://www.who.int/news-room/fact-sheets/detail/influenza-(seasonal)', createdAt: at(-4 * DAY), readAt: at(-3 * DAY),
         title: t('Sezoni i gripit', 'Flu season', 'Сезона на грип'),
         body: t('Lexoni këshillat e OBSH-së për gripin sezonal.', "Read the WHO's advice on seasonal flu.", 'Прочитајте ги советите на СЗО за сезонскиот грип.'),
       },
-      { userId: u.geri, type: 'FOLDER_CREATED', params: { doctor: 'Arben Mjeku' }, folderId: ids.coldFolderId, createdAt: at(-45 * DAY), readAt: at(-45 * DAY) },
-      { userId: u.geri, type: 'SUBSCRIPTION_ACTIVATED', params: { plan: 'Premium', date: '31.12.2027' }, createdAt: startOfYear, readAt: startOfYear },
-      { userId: u.arben, type: 'FOLDER_COMMENT', params: { author: 'Geri Demo' }, folderId: ids.coldFolderId, createdAt: at(-44 * DAY), readAt: at(-44 * DAY) },
+      { userId: u.patient, type: 'FOLDER_CREATED', params: { doctor: 'Arben Mjeku' }, folderId: ids.coldFolderId, createdAt: at(-45 * DAY), readAt: at(-45 * DAY) },
+      { userId: u.patient, type: 'SUBSCRIPTION_ACTIVATED', params: { plan: 'Premium', date: '31.12.2027' }, createdAt: startOfYear, readAt: startOfYear },
+      { userId: u.arben, type: 'FOLDER_COMMENT', params: { author: 'Patient Demo' }, folderId: ids.coldFolderId, createdAt: at(-44 * DAY), readAt: at(-44 * DAY) },
       {
         userId: u.arben, type: 'ANNOUNCEMENT', createdAt: at(-1 * DAY),
         title: t('Turnet e fundjavës', 'Weekend shifts', 'Викенд смени'),
@@ -520,6 +522,7 @@ async function main() {
   const u = await seedUsers();
   await reset();
   await seedInsurance(u);
+  await seedLabReports(prisma, u.patient);
   await seedContent();
   const { live } = await seedEvents(u);
   const { cold, rash } = await seedFolders(u);

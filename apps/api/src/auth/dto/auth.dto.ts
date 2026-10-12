@@ -10,7 +10,7 @@ const toUpperCode = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.replace(/\s+/g, '').toUpperCase() : value;
 
 export class EmailDto {
-  @ApiProperty({ example: 'geri@telehealth.al' })
+  @ApiProperty({ example: 'patient@telehealth.al' })
   @Transform(toEmail)
   @IsEmail()
   @MaxLength(254)

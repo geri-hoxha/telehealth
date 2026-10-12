@@ -9,6 +9,7 @@ import type {
   FolderComment,
   FolderDocument,
   HealthEvent,
+  LabReport,
   MedicalFolder,
   NewFolder,
   Patient,
@@ -28,6 +29,11 @@ export const subscriptionApi = {
   redeemPrepaid: (code: string) => apiRequest<Subscription>('/subscription/prepaid', { method: 'POST', body: { code } }),
   requestDemo: () => apiRequest<Subscription>('/subscription/demo', { method: 'POST' }),
   claims: () => apiRequest<Claim[]>('/claims'),
+};
+
+export const labReportsApi = {
+  /** The latest blood test and the latest urine test, newest first. */
+  latest: () => apiRequest<LabReport[]>('/lab-reports/latest'),
 };
 
 export const contentApi = {

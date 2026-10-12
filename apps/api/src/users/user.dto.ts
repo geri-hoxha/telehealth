@@ -28,10 +28,10 @@ export class UserDto {
   @ApiProperty({ format: 'uuid' })
   id: string;
 
-  @ApiProperty({ example: 'geri@telehealth.al' })
+  @ApiProperty({ example: 'patient@telehealth.al' })
   email: string;
 
-  @ApiProperty({ example: 'Geri' })
+  @ApiProperty({ example: 'Patient' })
   firstName: string;
 
   @ApiProperty({ example: 'Demo' })

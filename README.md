@@ -33,7 +33,7 @@ Demo logins (password **1234** for all):
 
 | Email | Role | Notes |
 |---|---|---|
-| `geri@telehealth.al` | patient | Active Premium subscription, folders, claims, call history |
+| `patient@telehealth.al` | patient | Active Premium subscription, folders, claims, call history |
 | `arta@telehealth.al` | patient | No subscription, to try "My registration" |
 | `elton@telehealth.al` | patient | Blocked from calling for 2 days |
 | `doktor@telehealth.al` | doctor | Arben Mjeku; specialist of the live activity |
@@ -73,7 +73,7 @@ Setting up LiveKit, the Apple push key and Firebase is described step by step in
    ```
 
    An iPhone needs a paid Apple Developer account, and **Developer Mode** turned on (Settings → Privacy & Security). Install the build from the link EAS prints, then run `pnpm dev:mobile` and open the dev server from the app.
-3. **Testing needs two phones:** log in as **doktor@telehealth.al** on one and **geri@telehealth.al** on the other, then call from geri's phone. With one phone, see "Testing on an iPhone without a paid Apple account" in [docs/CALLS_SETUP.md](docs/CALLS_SETUP.md).
+3. **Testing needs two phones:** log in as **doktor@telehealth.al** on one and **patient@telehealth.al** on the other, then call from the patient's phone. With one phone, see "Testing on an iPhone without a paid Apple account" in [docs/CALLS_SETUP.md](docs/CALLS_SETUP.md).
 
 ## Useful commands
 

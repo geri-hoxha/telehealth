@@ -1,4 +1,4 @@
-// Calls a doctor as the demo patient (geri@telehealth.al / 1234) and opens the patient's side in
+// Calls a doctor as the demo patient (patient@telehealth.al / 1234) and opens the patient's side in
 // the browser through LiveKit Meet, so one phone logged in as the doctor is enough to test calls.
 // The doctor's app must be open (or have a push device), or no doctor counts as reachable.
 //
@@ -37,7 +37,7 @@ async function request(method, path, token, body) {
 }
 
 const mode = process.argv[2] ?? 'video';
-const { accessToken } = await request('POST', '/auth/login', null, { email: 'geri@telehealth.al', password: '1234' });
+const { accessToken } = await request('POST', '/auth/login', null, { email: 'patient@telehealth.al', password: '1234' });
 
 if (mode === 'end') {
   if (!existsSync(LAST_CALL_FILE)) {

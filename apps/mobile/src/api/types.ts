@@ -139,6 +139,39 @@ export interface Claim {
   updatedAt: string;
 }
 
+// --- lab results ---
+
+export type LabReportType = 'BLOOD' | 'URINE';
+export type LabStatus = 'LOW' | 'NORMAL' | 'BORDERLINE' | 'HIGH';
+
+/** A reference range. It runs up to `to`, where the next one starts (null: no end). */
+export interface LabRange {
+  to: number | null;
+  status: LabStatus;
+}
+
+export interface LabResult {
+  id: string;
+  name: string;
+  /** Empty when the value has no unit (pH). */
+  unit: string;
+  value: number;
+  /** The ends of the scale drawn under the value. */
+  scaleMin: number;
+  scaleMax: number;
+  status: LabStatus;
+  /** In order, from the low end of the scale. */
+  ranges: LabRange[];
+}
+
+export interface LabReport {
+  id: string;
+  type: LabReportType;
+  takenAt: string;
+  lab: string;
+  results: LabResult[];
+}
+
 // --- content ---
 
 interface ContentLook {

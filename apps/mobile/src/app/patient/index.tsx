@@ -1,14 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useArticles, useBenefits, useStories, useSubscription, useUnreadNotifications } from '@/api/queries';
 import type { Article, Benefit, Story } from '@/api/types';
 import { useUser } from '@/auth/AuthProvider';
 import { HealthCard } from '@/components/HealthCard';
-import { AppText, Avatar, Card, GradientIcon, IconButton, Screen, SectionHeader, Skeleton, type IconName } from '@/components/ui';
+import { AppText, Avatar, Button, Card, IconButton, Screen, SectionHeader, Skeleton, type IconName } from '@/components/ui';
 import { useI18n } from '@/i18n';
-import { accent, colors, gradients, radius, shadows, spacing } from '@/theme';
+import { accentTone, colors, radius, spacing } from '@/theme';
 import { useGreeting } from '@/utils/greeting';
 
 export default function PatientHome() {
@@ -79,8 +78,8 @@ export default function PatientHome() {
         <ActivateCard />
       )}
 
-      <Card onPress={() => router.push('/patient/call')} style={styles.callBanner}>
-        <View style={styles.callIcon}>
+      <Card onPress={() => router.push('/patient/call')} style={styles.banner}>
+        <View style={styles.bannerIcon}>
           <Ionicons name="videocam" size={22} color={colors.white} />
         </View>
         <View style={styles.flex}>
@@ -90,6 +89,19 @@ export default function PatientHome() {
           </AppText>
         </View>
         <Ionicons name="arrow-forward-circle" size={30} color={colors.primary} />
+      </Card>
+
+      <Card onPress={() => router.push('/lab-results')} style={styles.banner}>
+        <View style={[styles.bannerIcon, { backgroundColor: labTone.soft }]}>
+          <Ionicons name="water" size={22} color={labTone.color} />
+        </View>
+        <View style={styles.flex}>
+          <AppText variant="subhead">{t('lab.link')}</AppText>
+          <AppText variant="caption" color={colors.textMuted}>
+            {t('lab.linkText')}
+          </AppText>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
       </Card>
 
       <SectionHeader title={t('home.benefits')} />
@@ -129,55 +141,49 @@ function StoriesRow({ stories, loading }: { stories?: Story[]; loading: boolean 
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.storiesList}
       style={styles.storiesBleed}
-      renderItem={({ item, index }) => (
-        <Pressable
-          onPress={() => router.push({ pathname: '/stories', params: { start: String(index) } })}
-          accessibilityRole="button"
-          accessibilityLabel={item.title}
-          style={styles.story}
-        >
-          <LinearGradient colors={accent(item.color)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.storyRing}>
-            <View style={styles.storyGap}>
-              <GradientIcon icon={item.icon} color={item.color} size={58} rounded={29} />
+      renderItem={({ item, index }) => {
+        const tone = accentTone(item.color);
+        return (
+          <Pressable
+            onPress={() => router.push({ pathname: '/stories', params: { start: String(index) } })}
+            accessibilityRole="button"
+            accessibilityLabel={item.title}
+            style={styles.story}
+          >
+            <View style={[styles.storyRing, { borderColor: tone.color }]}>
+              <View style={[styles.storyIcon, { backgroundColor: tone.soft }]}>
+                <Ionicons name={item.icon as IconName} size={26} color={tone.color} />
+              </View>
             </View>
-          </LinearGradient>
-          <AppText variant="small" weight="600" numberOfLines={1} align="center" style={styles.storyTitle}>
-            {item.title}
-          </AppText>
-        </Pressable>
-      )}
+            <AppText variant="small" weight="600" numberOfLines={1} align="center" style={styles.storyTitle}>
+              {item.title}
+            </AppText>
+          </Pressable>
+        );
+      }}
     />
   );
 }
 
 function ActivateCard() {
   const { t } = useI18n();
+  const open = () => router.push('/subscription');
   return (
-    <Pressable onPress={() => router.push('/subscription')} accessibilityRole="button" style={styles.activateShadow}>
-      <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.activate}>
-        <View style={styles.activateBubble} />
-        <View style={styles.activateIcon}>
-          <Ionicons name="shield-checkmark" size={26} color={colors.primary} />
-        </View>
-        <AppText variant="headline" color={colors.white}>
-          {t('home.activateTitle')}
-        </AppText>
-        <AppText variant="caption" color="rgba(255,255,255,0.9)">
-          {t('home.activateText')}
-        </AppText>
-        <View style={styles.activateButton}>
-          <AppText variant="caption" weight="800" color={colors.primaryDark}>
-            {t('home.activate')}
-          </AppText>
-          <Ionicons name="arrow-forward" size={16} color={colors.primaryDark} />
-        </View>
-      </LinearGradient>
-    </Pressable>
+    <Card onPress={open} style={styles.activate}>
+      <View style={styles.tile}>
+        <Ionicons name="shield-checkmark" size={24} color={colors.primary} />
+      </View>
+      <AppText variant="headline">{t('home.activateTitle')}</AppText>
+      <AppText variant="caption" color={colors.textMuted}>
+        {t('home.activateText')}
+      </AppText>
+      <Button label={t('home.activate')} size="sm" fullWidth={false} onPress={open} style={styles.activateButton} />
+    </Card>
   );
 }
 
 function BenefitsCarousel({ benefits, loading }: { benefits?: Benefit[]; loading: boolean }) {
-  if (loading) return <Skeleton height={150} rounded={radius.xl} />;
+  if (loading) return <Skeleton height={140} rounded={radius.lg} />;
   return (
     <ScrollView
       horizontal
@@ -185,41 +191,43 @@ function BenefitsCarousel({ benefits, loading }: { benefits?: Benefit[]; loading
       snapToInterval={BENEFIT_WIDTH + spacing.md - 4}
       decelerationRate="fast"
       contentContainerStyle={styles.benefits}
-      style={styles.storiesBleed}
+      style={styles.benefitsBleed}
     >
-      {benefits?.map((benefit) => (
-        <Pressable
-          key={benefit.id}
-          onPress={() => router.push({ pathname: '/benefits/[id]', params: { id: benefit.id } })}
-          accessibilityRole="button"
-          accessibilityLabel={benefit.title}
-          style={({ pressed }) => [pressed && styles.pressed]}
-        >
-          <LinearGradient colors={accent(benefit.color)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.benefit}>
-            <View style={styles.benefitBubble} />
-            <View style={styles.benefitIcon}>
+      {benefits?.map((benefit) => {
+        const tone = accentTone(benefit.color);
+        return (
+          <Card
+            key={benefit.id}
+            onPress={() => router.push({ pathname: '/benefits/[id]', params: { id: benefit.id } })}
+            accessibilityLabel={benefit.title}
+            style={[styles.benefit, { backgroundColor: tone.soft }]}
+          >
+            <View style={[styles.tile, { backgroundColor: tone.color }]}>
               <Ionicons name={benefit.icon as IconName} size={22} color={colors.white} />
             </View>
             <View style={styles.benefitText}>
-              <AppText variant="headline" color={colors.white} numberOfLines={2}>
+              <AppText variant="subhead" numberOfLines={2}>
                 {benefit.title}
               </AppText>
-              <AppText variant="caption" color="rgba(255,255,255,0.9)" numberOfLines={1}>
+              <AppText variant="caption" color={colors.textSecondary} numberOfLines={1}>
                 {benefit.subtitle}
               </AppText>
             </View>
-          </LinearGradient>
-        </Pressable>
-      ))}
+          </Card>
+        );
+      })}
     </ScrollView>
   );
 }
 
 function ArticleRow({ article }: { article: Article }) {
   const { t } = useI18n();
+  const tone = accentTone(article.color);
   return (
     <Card onPress={() => router.push({ pathname: '/articles/[id]', params: { id: article.id } })} style={styles.article}>
-      <GradientIcon icon={article.icon} color={article.color} size={56} rounded={radius.lg} />
+      <View style={[styles.tile, styles.articleTile, { backgroundColor: tone.soft }]}>
+        <Ionicons name={article.icon as IconName} size={26} color={tone.color} />
+      </View>
       <View style={styles.flex}>
         <AppText variant="subhead" numberOfLines={2}>
           {article.title}
@@ -228,8 +236,8 @@ function ArticleRow({ article }: { article: Article }) {
           {article.summary}
         </AppText>
         <View style={styles.readTime}>
-          <Ionicons name="time-outline" size={12} color={colors.primary} />
-          <AppText variant="small" weight="700" color={colors.primary}>
+          <Ionicons name="time-outline" size={12} color={tone.color} />
+          <AppText variant="small" weight="700" color={tone.color}>
             {t('home.readMinutes', { count: article.readMinutes })}
           </AppText>
         </View>
@@ -239,6 +247,7 @@ function ArticleRow({ article }: { article: Article }) {
 }
 
 const BENEFIT_WIDTH = 250;
+const labTone = accentTone('coral');
 
 const styles = StyleSheet.create({
   flex: {
@@ -292,22 +301,25 @@ const styles = StyleSheet.create({
     height: 70,
     borderRadius: 35,
     padding: 3,
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
-  storyGap: {
+  storyIcon: {
     flex: 1,
-    borderRadius: 32,
-    padding: 3,
-    backgroundColor: colors.background,
+    borderRadius: 30,
+    backgroundColor: colors.primaryTint,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   storyTitle: {
     width: 72,
   },
-  callBanner: {
+  banner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md - 4,
   },
-  callIcon: {
+  bannerIcon: {
     width: 46,
     height: 46,
     borderRadius: radius.md + 2,
@@ -315,79 +327,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  activateShadow: {
-    borderRadius: radius.xl,
-    ...shadows.raised,
-  },
-  activate: {
-    borderRadius: radius.xl,
-    padding: spacing.lg - 4,
-    gap: spacing.sm,
-    overflow: 'hidden',
-  },
-  activateBubble: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    right: -60,
-    top: -80,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  activateIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.md + 2,
-    backgroundColor: colors.white,
+  tile: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryTint,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xs,
+  },
+  activate: {
+    padding: spacing.lg - 4,
+    gap: spacing.sm,
   },
   activateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
     alignSelf: 'flex-start',
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.white,
+    marginTop: spacing.xs,
   },
+  // The vertical padding keeps the cards' shadows from being clipped by the scroll view.
   benefits: {
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     gap: spacing.md - 4,
+  },
+  benefitsBleed: {
+    marginHorizontal: -spacing.md,
+    marginVertical: -spacing.sm,
   },
   benefit: {
     width: BENEFIT_WIDTH,
-    height: 150,
-    borderRadius: radius.xl,
-    padding: spacing.md,
+    height: 140,
     justifyContent: 'space-between',
-    overflow: 'hidden',
-  },
-  benefitBubble: {
-    position: 'absolute',
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    right: -40,
-    bottom: -60,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  benefitIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   benefitText: {
     gap: 2,
-  },
-  pressed: {
-    opacity: 0.85,
   },
   list: {
     gap: spacing.md - 4,
@@ -397,6 +369,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md - 2,
     padding: spacing.md - 4,
+  },
+  articleTile: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.lg,
   },
   readTime: {
     flexDirection: 'row',

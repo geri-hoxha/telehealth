@@ -10,6 +10,7 @@ import { DoctorsModule } from './doctors/doctors.module';
 import { EventsModule } from './events/events.module';
 import { FilesModule } from './files/files.module';
 import { FoldersModule } from './folders/folders.module';
+import { LabReportsModule } from './lab-reports/lab-reports.module';
 import { MailModule } from './mail/mail.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PatientsModule } from './patients/patients.module';
@@ -39,6 +40,7 @@ import { UsersModule } from './users/users.module';
     DoctorsModule,
     PatientsModule,
     FoldersModule,
+    LabReportsModule,
     EventsModule,
     ContentModule,
     AppConfigModule,
