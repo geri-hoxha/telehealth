@@ -27,26 +27,26 @@ A full-stack telemedicine platform: a **React Native app for both patients and d
 
 Onboarding, the home feed and stories, the health card, lab results, medical folders, and calling a doctor with one tap.
 
-PATIENT_VIDEO_URL
+https://github.com/user-attachments/assets/4768976b-8028-4c03-824e-2a28d08c462d
 
 ### 📹 Live video call test
 
 A real call between two phones: the patient taps Call, the doctor's phone rings through the native call screen, the doctor answers, and both sides talk over live video.
 
-CALL_VIDEO_URL
+(https://github.com/user-attachments/assets/473572e4-add8-49f9-b128-2f60fb64903e)
 
 ---
 
 ## 📌 At a glance
 
-| | |
-|---|---|
-| **Apps** | One mobile app with separate patient and doctor experiences, plus a REST API |
-| **Codebase** | ~19,000 lines of TypeScript in a pnpm + Turborepo monorepo |
-| **Backend** | 20 NestJS modules, 64 REST endpoints with Swagger docs, 24 Prisma models, 7 SQL migrations |
-| **Calling** | LiveKit (WebRTC) audio/video, a server-side call queue, native CallKit (iOS) and Core-Telecom (Android) ringing |
-| **Push** | APNs (VoIP + alerts) and Firebase Cloud Messaging clients written from scratch over HTTP/2 |
-| **Languages** | Full UI, push notifications, emails and server pages in 3 languages, with type-checked translations |
+|               |                                                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------------------------------- |
+| **Apps**      | One mobile app with separate patient and doctor experiences, plus a REST API                                    |
+| **Codebase**  | ~19,000 lines of TypeScript in a pnpm + Turborepo monorepo                                                      |
+| **Backend**   | 20 NestJS modules, 64 REST endpoints with Swagger docs, 24 Prisma models, 7 SQL migrations                      |
+| **Calling**   | LiveKit (WebRTC) audio/video, a server-side call queue, native CallKit (iOS) and Core-Telecom (Android) ringing |
+| **Push**      | APNs (VoIP + alerts) and Firebase Cloud Messaging clients written from scratch over HTTP/2                      |
+| **Languages** | Full UI, push notifications, emails and server pages in 3 languages, with type-checked translations             |
 
 ---
 
@@ -55,7 +55,7 @@ CALL_VIDEO_URL
 ### 👤 For patients
 
 - **One-tap doctor call.** A single large button starts a video or voice-only call. The patient doesn't have to pick a doctor: the system finds the first free one.
-- **Live queue experience.** The waiting screen shows *"N people ahead"*, *"Calling…"* or *"Trying another line…"* as the call moves through the queue, with a dial tone on the phone's native call screen.
+- **Live queue experience.** The waiting screen shows _"N people ahead"_, _"Calling…"_ or _"Trying another line…"_ as the call moves through the queue, with a dial tone on the phone's native call screen.
 - **In-call experience.** Full-screen video tiles for every participant, a picture-in-picture self view, mute, speaker and front/back camera controls, and a **post-call rating** with comments.
 - **Digital health card.** A gold, bank-card-sized (ISO/IEC 7810 ID-1) card with a 3D look built from layered gradients and shadows that **tilts toward your finger** as you touch it.
 - **Lab results.** The latest blood and urine tests, each value drawn on its own scale of dots coloured by the lab's reference ranges (low, normal, borderline, high).
@@ -167,12 +167,12 @@ stateDiagram-v2
 
 ## 🧰 Tech stack
 
-| Layer | Technologies |
-|---|---|
-| **Mobile** | React Native 0.86 (New Architecture), Expo SDK 57, Expo Router (typed file-based routing, role-protected stacks), TanStack Query, React Hook Form + Zod, LiveKit React Native SDK, `expo-callkit-telecom`, expo-notifications, expo-local-authentication, expo-secure-store, expo-print, expo-image-picker, expo-document-picker, expo-linear-gradient, WebView |
-| **Backend** | NestJS 12, Prisma 7 (driver adapter `pg`), PostgreSQL, class-validator DTOs, Swagger / OpenAPI, `@nestjs/jwt`, Argon2, LiveKit server SDK, Resend (email) |
-| **Real-time & push** | LiveKit (WebRTC SFU), Apple APNs (PushKit VoIP + alerts), Firebase Cloud Messaging v1 |
-| **Tooling** | TypeScript 6 (strict) everywhere, pnpm workspaces, Turborepo, EAS Build, tsc-watch |
+| Layer                | Technologies                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Mobile**           | React Native 0.86 (New Architecture), Expo SDK 57, Expo Router (typed file-based routing, role-protected stacks), TanStack Query, React Hook Form + Zod, LiveKit React Native SDK, `expo-callkit-telecom`, expo-notifications, expo-local-authentication, expo-secure-store, expo-print, expo-image-picker, expo-document-picker, expo-linear-gradient, WebView |
+| **Backend**          | NestJS 12, Prisma 7 (driver adapter `pg`), PostgreSQL, class-validator DTOs, Swagger / OpenAPI, `@nestjs/jwt`, Argon2, LiveKit server SDK, Resend (email)                                                                                                                                                                                                       |
+| **Real-time & push** | LiveKit (WebRTC SFU), Apple APNs (PushKit VoIP + alerts), Firebase Cloud Messaging v1                                                                                                                                                                                                                                                                           |
+| **Tooling**          | TypeScript 6 (strict) everywhere, pnpm workspaces, Turborepo, EAS Build, tsc-watch                                                                                                                                                                                                                                                                              |
 
 ---
 
@@ -180,14 +180,14 @@ stateDiagram-v2
 
 24 Prisma models across six domains, all with UUID v7 keys:
 
-| Domain | Models |
-|---|---|
-| **Identity** | `User` (patient / doctor), `DoctorProfile`, `AuthToken` (email verification, password reset, biometric), `Device` (VoIP / APNs / FCM tokens) |
-| **Calls** | `Call`, `CallAttempt` (each ring), `CallInvite` ("add doctor"), `CallFeedback` |
-| **Medical** | `MedicalFolder` (with concern categories and doctor-only notes), `FolderComment`, `FolderDocument`, `PatientBlock`, `LabReport`, `LabResult` (with reference ranges) |
-| **Insurance** | `Subscription`, `InsurancePolicy`, `PrepaidCard`, `Claim` (money as `Decimal(18,2)` + currency) |
-| **Engagement** | `Event`, `EventParticipant`, `Notification` (typed, rendered per language from templates) |
-| **Content** | `Story`, `Benefit`, `Article` (texts stored as `{ sq, en, mk }` JSON) |
+| Domain         | Models                                                                                                                                                               |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Identity**   | `User` (patient / doctor), `DoctorProfile`, `AuthToken` (email verification, password reset, biometric), `Device` (VoIP / APNs / FCM tokens)                         |
+| **Calls**      | `Call`, `CallAttempt` (each ring), `CallInvite` ("add doctor"), `CallFeedback`                                                                                       |
+| **Medical**    | `MedicalFolder` (with concern categories and doctor-only notes), `FolderComment`, `FolderDocument`, `PatientBlock`, `LabReport`, `LabResult` (with reference ranges) |
+| **Insurance**  | `Subscription`, `InsurancePolicy`, `PrepaidCard`, `Claim` (money as `Decimal(18,2)` + currency)                                                                      |
+| **Engagement** | `Event`, `EventParticipant`, `Notification` (typed, rendered per language from templates)                                                                            |
+| **Content**    | `Story`, `Benefit`, `Article` (texts stored as `{ sq, en, mk }` JSON)                                                                                                |
 
 ---
 
@@ -195,16 +195,16 @@ stateDiagram-v2
 
 All routes are under `/api`, validated with whitelisted DTOs, and documented in **Swagger at `/api/docs`**. Errors the app reacts to have stable codes (`SUBSCRIPTION_REQUIRED`, `PATIENT_BLOCKED`, `EVENT_FULL`, `NO_DOCTOR_AVAILABLE`, …) that the app translates.
 
-| Group | Endpoints |
-|---|---|
-| `auth` | check email, login, register, verify email, resend verification, forgot password, verify reset code, reset password, change password, biometric key create / revoke / login, `me` |
-| `calls` | create, list, incoming, available doctors, detail, accept, decline, end, invite doctor, feedback, free line |
-| `folders` | list, create, detail, comments, documents (upload + authenticated download) |
-| `patients` | list, detail, block, unblock |
-| `subscription` | status, activate via insurance / prepaid / demo, claims |
-| `events` | list, detail, join, leave |
-| `notifications` | list, unread, mark one / all read |
-| other | profile + avatar, devices, doctors, lab reports, stories, benefits, articles, app config, partner page |
+| Group           | Endpoints                                                                                                                                                                         |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth`          | check email, login, register, verify email, resend verification, forgot password, verify reset code, reset password, change password, biometric key create / revoke / login, `me` |
+| `calls`         | create, list, incoming, available doctors, detail, accept, decline, end, invite doctor, feedback, free line                                                                       |
+| `folders`       | list, create, detail, comments, documents (upload + authenticated download)                                                                                                       |
+| `patients`      | list, detail, block, unblock                                                                                                                                                      |
+| `subscription`  | status, activate via insurance / prepaid / demo, claims                                                                                                                           |
+| `events`        | list, detail, join, leave                                                                                                                                                         |
+| `notifications` | list, unread, mark one / all read                                                                                                                                                 |
+| other           | profile + avatar, devices, doctors, lab reports, stories, benefits, articles, app config, partner page                                                                            |
 
 ---
 
@@ -290,13 +290,13 @@ An iPhone build needs a paid Apple Developer account and **Developer Mode** turn
 
 Password **`1234`** for all:
 
-| Email | Role | What to try |
-|---|---|---|
-| `patient@telehealth.al` | Patient | Active Premium plan, folders, claims, lab results, call history |
-| `arta@telehealth.al` | Patient | No subscription: try activating one |
-| `elton@telehealth.al` | Patient | Blocked from calling for 2 days |
-| `doktor@telehealth.al` | Doctor | Specialist of the live activity |
-| `drita@` · `besnik@` · `elena@telehealth.al` | Doctors | For the queue and "Add doctor" |
+| Email                                        | Role    | What to try                                                     |
+| -------------------------------------------- | ------- | --------------------------------------------------------------- |
+| `patient@telehealth.al`                      | Patient | Active Premium plan, folders, claims, lab results, call history |
+| `arta@telehealth.al`                         | Patient | No subscription: try activating one                             |
+| `elton@telehealth.al`                        | Patient | Blocked from calling for 2 days                                 |
+| `doktor@telehealth.al`                       | Doctor  | Specialist of the live activity                                 |
+| `drita@` · `besnik@` · `elena@telehealth.al` | Doctors | For the queue and "Add doctor"                                  |
 
 To activate a subscription: insurance **Shëndetësore `4021883011230059`** or **Familjare `5100200030004000`**, or the prepaid codes **`TH-30-DEMO`** / **`TH-90-DEMO`**.
 
