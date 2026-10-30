@@ -27,13 +27,13 @@ A full-stack telemedicine platform: a **React Native app for both patients and d
 
 Onboarding, the home feed and stories, the health card, lab results, medical folders, and calling a doctor with one tap.
 
-PATIENT_VIDEO_URL
+https://github.com/user-attachments/assets/b63827b1-70d8-4a84-a0c8-295c4c8966b6
 
 ### 📹 Live video call test
 
 A real call between two phones: the patient taps Call, the doctor's phone rings through the native call screen, the doctor answers, and both sides talk over live video.
 
-CALL_VIDEO_URL
+[CALL_VIDEO_URL](https://github.com/user-attachments/assets/473572e4-add8-49f9-b128-2f60fb64903e)
 
 ---
 
