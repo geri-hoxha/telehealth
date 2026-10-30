@@ -27,7 +27,8 @@ A full-stack telemedicine platform: a **React Native app for both patients and d
 
 Onboarding, the home feed and stories, the health card, lab results, medical folders, and calling a doctor with one tap.
 
-https://github.com/user-attachments/assets/b63827b1-70d8-4a84-a0c8-295c4c8966b6
+https://github.com/user-attachments/assets/4768976b-8028-4c03-824e-2a28d08c462d
+
 
 ### 📹 Live video call test
 
