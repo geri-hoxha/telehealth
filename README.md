@@ -33,7 +33,7 @@ https://github.com/user-attachments/assets/4768976b-8028-4c03-824e-2a28d08c462d
 
 A real call between two phones: the patient taps Call, the doctor's phone rings through the native call screen, the doctor answers, and both sides talk over live video.
 
-(https://github.com/user-attachments/assets/473572e4-add8-49f9-b128-2f60fb64903e)
+https://github.com/user-attachments/assets/473572e4-add8-49f9-b128-2f60fb64903e
 
 ---
 
